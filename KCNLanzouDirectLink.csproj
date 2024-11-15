@@ -1,0 +1,47 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFrameworks>net6.0;net7.0;net8.0;</TargetFrameworks>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<!--
+		<Nullable>enable</Nullable>
+		-->
+
+		<!-- NuGet -->
+		<PackageId>KCNLanzouDirectLink</PackageId>
+		<Version>1.0.0</Version>
+		<Authors>剧毒的KCN(JDDKCN)</Authors>
+		<Company>KCN-Server</Company>
+		<Description>用于解析蓝奏云直链的C#原生实现类库。</Description>
+
+		<!-- 标签 -->
+		<PackageTags>Lanzou;DirectLink;Cloud;Download</PackageTags>
+
+		<!-- 许可证 -->
+		<PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
+		
+		<!-- 项目源 -->
+		<RepositoryUrl>https://github.com/JDDKCN/KCNLanzouDirectLink</RepositoryUrl>
+
+		<!-- 发布配置 -->
+		<Configuration>Release</Configuration>
+		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+		<Title>KCNLanzouDirectLink</Title>
+		<Copyright>Copyright ©2023-2024 剧毒的KCN, All Rights Reserved.</Copyright>
+		<PackageProjectUrl>https://github.com/JDDKCN/KCNLanzouDirectLink</PackageProjectUrl>
+		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
+		<PackageReleaseNotes>初次发布</PackageReleaseNotes>
+		<PackageReadmeFile>Readme.md</PackageReadmeFile>
+		<PackageIcon>favicon.png</PackageIcon>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="favicon.png" Pack="true" PackagePath="\" />
+		<None Include="Readme.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+</Project>
