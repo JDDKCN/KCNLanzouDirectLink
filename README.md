@@ -31,9 +31,9 @@ class Program
     static async Task Main(string[] args)
     {
         string shareUrl = "https://syxz.lanzoue.com/qwertyuiopas";
-        string? fullUrl = await GetUrlHelper.GetFullUrl(shareUrl);
+        string? link = await KCNLanzouLinkHelper.GetDirectLinkAsync(shareUrl);
 
-        Console.WriteLine($"直链地址: {fullUrl}");
+        Console.WriteLine($"直链地址: {link}");
     }
 }
 ```
@@ -47,11 +47,11 @@ class Program
 {
     static async Task Main(string[] args)
     {
-        string shareUrl = "https://syxz.lanzoue.com/i4MRg1emxw9c";
-        string key = "your_encryption_key";  // 使用你获取到的加密key
-        string? fullUrl = await GetUrlHelper.GetFullUrl(shareUrl, key);
+        string shareUrl = "https://syxz.lanzoue.com/qwertyuiopas";
+        string key = "your_encryption_key";  
+        string? linkEncryption = await KCNLanzouLinkHelper.GetDirectLinkAsync(shareUrl, key);
 
-        Console.WriteLine($"直链地址: {fullUrl}");
+        Console.WriteLine($"直链地址: {linkEncryption}");
     }
 }
 ```
