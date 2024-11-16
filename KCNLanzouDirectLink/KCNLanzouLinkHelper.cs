@@ -68,13 +68,13 @@
         /// <summary>
         /// (显式指定)获取蓝奏云分享链接的信息。
         /// </summary>
-        /// <param name="isisEncryption">是否为加密资源</param>
+        /// <param name="isEncryption">是否为加密资源</param>
         /// <param name="url">蓝奏云分享链接</param>
         /// <param name="key">加密密钥(非必须)</param>
         /// <returns></returns>
-        public static async Task<(DownloadState State, LanzouFileInfo? FileInfo)> GetFileInfoAsync(bool isisEncryption, string url, string key = "")
+        public static async Task<(DownloadState State, LanzouFileInfo? FileInfo)> GetFileInfoAsync(bool isEncryption, string url, string key = "")
         {
-            return await GetUrlInfoHelper.ParseFileInfoAsync(true, url, key);
+            return await GetUrlInfoHelper.ParseFileInfoAsync(isEncryption, url, key);
         }
 
     }
