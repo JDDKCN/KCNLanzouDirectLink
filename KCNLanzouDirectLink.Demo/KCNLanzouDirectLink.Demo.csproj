@@ -9,8 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="KCNLanzouDirectLink" Version="1.0.0" />
     <PackageReference Include="SunnyUI" Version="3.7.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\KCNLanzouDirectLink\KCNLanzouDirectLink.csproj" />
   </ItemGroup>
 
 </Project>

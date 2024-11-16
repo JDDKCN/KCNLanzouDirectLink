@@ -33,6 +33,7 @@
             uiTextBox2 = new Sunny.UI.UITextBox();
             uiLabel1 = new Sunny.UI.UILabel();
             uiLabel2 = new Sunny.UI.UILabel();
+            uiButton2 = new Sunny.UI.UIButton();
             SuspendLayout();
             // 
             // uiButton1
@@ -41,7 +42,7 @@
             uiButton1.Location = new Point(117, 299);
             uiButton1.MinimumSize = new Size(1, 1);
             uiButton1.Name = "uiButton1";
-            uiButton1.Size = new Size(561, 75);
+            uiButton1.Size = new Size(356, 75);
             uiButton1.TabIndex = 0;
             uiButton1.Text = "获取直链";
             uiButton1.TipsFont = new Font("宋体", 9F, FontStyle.Regular, GraphicsUnit.Point, 134);
@@ -99,10 +100,34 @@
             uiLabel2.Text = "蓝奏云直链获取Demo";
             uiLabel2.TextAlign = ContentAlignment.MiddleCenter;
             // 
+            // uiButton2
+            // 
+            uiButton2.FillColor = Color.FromArgb(0, 150, 136);
+            uiButton2.FillColor2 = Color.FromArgb(0, 150, 136);
+            uiButton2.FillHoverColor = Color.FromArgb(51, 171, 160);
+            uiButton2.FillPressColor = Color.FromArgb(0, 120, 109);
+            uiButton2.FillSelectedColor = Color.FromArgb(0, 120, 109);
+            uiButton2.Font = new Font("微软雅黑", 12F, FontStyle.Regular, GraphicsUnit.Point, 134);
+            uiButton2.LightColor = Color.FromArgb(238, 248, 248);
+            uiButton2.Location = new Point(479, 299);
+            uiButton2.MinimumSize = new Size(1, 1);
+            uiButton2.Name = "uiButton2";
+            uiButton2.RectColor = Color.FromArgb(0, 150, 136);
+            uiButton2.RectHoverColor = Color.FromArgb(51, 171, 160);
+            uiButton2.RectPressColor = Color.FromArgb(0, 120, 109);
+            uiButton2.RectSelectedColor = Color.FromArgb(0, 120, 109);
+            uiButton2.Size = new Size(199, 75);
+            uiButton2.Style = Sunny.UI.UIStyle.Custom;
+            uiButton2.TabIndex = 5;
+            uiButton2.Text = "获取信息";
+            uiButton2.TipsFont = new Font("宋体", 9F, FontStyle.Regular, GraphicsUnit.Point, 134);
+            uiButton2.Click += uiButton2_Click;
+            // 
             // FormMain
             // 
             AutoScaleMode = AutoScaleMode.None;
             ClientSize = new Size(800, 450);
+            Controls.Add(uiButton2);
             Controls.Add(uiLabel2);
             Controls.Add(uiLabel1);
             Controls.Add(uiTextBox2);
@@ -124,5 +149,6 @@
         private Sunny.UI.UITextBox uiTextBox2;
         private Sunny.UI.UILabel uiLabel1;
         private Sunny.UI.UILabel uiLabel2;
+        private Sunny.UI.UIButton uiButton2;
     }
 }

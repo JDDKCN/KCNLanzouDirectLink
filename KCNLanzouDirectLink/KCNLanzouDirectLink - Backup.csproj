@@ -29,7 +29,7 @@
 		<PackageProjectUrl>https://github.com/JDDKCN/KCNLanzouDirectLink</PackageProjectUrl>
 		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
 		<PackageReleaseNotes>更新内容：
-1. 优化代码，增强直链获取稳定性，增加状态枚举。
+1. 优化代码，增强直链获取稳定性，增加状态指示。
 2. 增加资源链接信息解析功能。 </PackageReleaseNotes>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageIcon>favicon.png</PackageIcon>
@@ -40,7 +40,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<None Include="README.md" Pack="true" PackagePath="\" />
+		<None Include="..\README.md" Pack="true" PackagePath="\" />
 		<None Include="favicon.png" Pack="true" PackagePath="\" />
 	</ItemGroup>
 

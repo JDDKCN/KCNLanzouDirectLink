@@ -1,110 +1,217 @@
-﻿using System.IO.Compression;
-using System.Net;
-using System.Text;
+﻿using System.Net;
+using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
 
 namespace KCNLanzouDirectLink
 {
     internal static class GetUrlHelper
     {
+        private static readonly HttpClient client;
+        private static readonly HttpClient clientNoRedirect;
+
+        static GetUrlHelper()
+        {
+            var handler = new HttpClientHandler
+            {
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+            };
+
+            client = new HttpClient(handler);
+
+            var handlerNoRedirect = new HttpClientHandler
+            {
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+                AllowAutoRedirect = false
+            };
+
+            clientNoRedirect = new HttpClient(handlerNoRedirect);
+        }
+
         /// <summary>
         /// 获取直链
         /// </summary>
-        /// <param name="url"></param>
-        /// <returns></returns>
-        public static async Task<string?> GetFullUrl(string url)
+        public static async Task<(DownloadState State, string? Url)> GetFullUrl(string url)
         {
-            return await GetFinalUrlAsync(
-                    ExtractAndCombineLinks(
-                    await GetHtmlContentAsync(url)));
+            if (string.IsNullOrEmpty(url))
+                return (DownloadState.UrlNotProvided, null);
+
+            var htmlContent = await GetHtmlContentAsync(url);
+            if (htmlContent == null)
+                return (DownloadState.HtmlContentNotFound, null);
+
+            var intermediateUrl = ExtractAndCombineLinks(htmlContent);
+            if (intermediateUrl == null)
+                return (DownloadState.IntermediateUrlNotFound, null);
+
+            var (state, finalUrl) = await GetFinalUrlAsync(intermediateUrl);
+            return (state, finalUrl);
         }
 
         /// <summary>
         /// 获取直链(加密)
         /// </summary>
-        /// <param name="url"></param>
-        /// <param name="key"></param>
-        /// <returns></returns>
-        public static async Task<string?> GetFullUrl(string url, string key)
+        public static async Task<(DownloadState State, string? Url)> GetFullUrl(string url, string key)
         {
-            var postsign = ExtractPatternValue(
-                await GetHtmlContentAsync(url),
-                @"var\s*vidksek\s*=\s*['""]([^'""]+)['""]");
-            return await GetFinalUrlToPassAsync(await GetHtmlToPassContentAsync(postsign, key));
+            if (string.IsNullOrEmpty(url))
+                return (DownloadState.UrlNotProvided, null);
+
+            var htmlContent = await GetHtmlContentAsync(url);
+            if (htmlContent == null)
+                return (DownloadState.HtmlContentNotFound, null);
+
+            var postsign = ExtractPatternValue(htmlContent, @"var\s*vidksek\s*=\s*['""]([^'""]+)['""]");
+            if (postsign == null)
+                return (DownloadState.PostsignNotFound, null);
+
+            var intermediateUrl = await GetHtmlToPassContentAsync(postsign, key);
+            if (intermediateUrl == null)
+                return (DownloadState.IntermediateUrlNotFound, null);
+
+            var (state, finalUrl) = await GetFinalUrlAsync(intermediateUrl);
+            return (state, finalUrl);
         }
 
         /// <summary>
         /// 模拟浏览器请求Html
         /// </summary>
-        /// <param name="url"></param>
-        /// <returns></returns>
         public static async Task<string?> GetHtmlContentAsync(string? url)
         {
             if (url == null)
                 return null;
 
-            using HttpClient client = new HttpClient();
-            client.DefaultRequestHeaders.Clear();
-            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 6_0 like Mac OS X) AppleWebKit/536.26 (KHTML, like Gecko) Version/6.0 Mobile/10A5376e Safari/8536.25");
-            client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8");
-            client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate");
-            client.DefaultRequestHeaders.Add("Accept-Language", "zh-CN,zh;q=0.9");
-            client.DefaultRequestHeaders.Add("Cache-Control", "no-cache");
-            client.DefaultRequestHeaders.Add("Connection", "keep-alive");
-            client.DefaultRequestHeaders.Add("Pragma", "no-cache");
-            client.DefaultRequestHeaders.Add("Upgrade-Insecure-Requests", "1");
-
             url = ModifyUrlForTp(url);
-            HttpResponseMessage response = await client.GetAsync(url);
-            response.EnsureSuccessStatusCode();
 
-            string contentEncoding = response.Content.Headers.ContentEncoding.ToString();
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            SetCommonHeaders(request);
 
-            byte[] responseBytes = await response.Content.ReadAsByteArrayAsync();
-            return contentEncoding.Contains("gzip", StringComparison.OrdinalIgnoreCase)
-                ? DecompressGzip(responseBytes)
-                : Encoding.UTF8.GetString(responseBytes);
+            try
+            {
+                var response = await client.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+
+                return await response.Content.ReadAsStringAsync();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 模拟浏览器请求Html(信息获取)
+        /// </summary>
+        public static async Task<string?> GetHtmlContentToInfoAsync(string? url)
+        {
+            if (url == null)
+                return null;
+
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+
+            try
+            {
+                var response = await client.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+
+                return await response.Content.ReadAsStringAsync();
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         /// <summary>
         /// 模拟浏览器请求Html(加密)
         /// </summary>
-        /// <param name="url"></param>
-        /// <returns></returns>
         public static async Task<string?> GetHtmlToPassContentAsync(string postsign, string key)
         {
-            using HttpClient client = new HttpClient();
-            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 6_0 like Mac OS X) AppleWebKit/536.26 (KHTML, like Gecko) Version/6.0 Mobile/10A5376e Safari/8536.25");
-            client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8");
-            client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate");
-            client.DefaultRequestHeaders.Add("Accept-Language", "zh-CN,zh;q=0.9");
-            client.DefaultRequestHeaders.Add("Cache-Control", "no-cache");
-            client.DefaultRequestHeaders.Add("Connection", "keep-alive");
-            client.DefaultRequestHeaders.Add("Pragma", "no-cache");
-            client.DefaultRequestHeaders.Add("Upgrade-Insecure-Requests", "1");
-            client.DefaultRequestHeaders.Add("Referer", "https://syxz.lanzoue.com");
-
-            var postData = new StringContent($"action=downprocess&sign={postsign}&p={key}", Encoding.UTF8, "application/x-www-form-urlencoded");
-            var response = await client.PostAsync("https://syxz.lanzoue.com/ajaxm.php", postData);
-
-            string content = await response.Content.ReadAsStringAsync();
-
-            var jsonResponse = Newtonsoft.Json.Linq.JObject.Parse(content);
-            string? domain = jsonResponse["dom"]?.ToString();
-            string? url = jsonResponse["url"]?.ToString();
-
-            if (string.IsNullOrEmpty(domain) || string.IsNullOrEmpty(url))
+            LanzouEncryptedFileInfo? flieConfig = await GetHtmlToPassContentDataAsync(postsign, key);
+            if (string.IsNullOrEmpty(flieConfig.Domain) || string.IsNullOrEmpty(flieConfig.Url))
                 return null;
+            return BuildDownloadUrl(flieConfig.Domain, flieConfig.Url);
+        }
 
-            string fullDownloadUrl = BuildDownloadUrl(domain, url);
-            return fullDownloadUrl;
+        /// <summary>
+        /// 模拟浏览器请求Html获取json数据(加密)
+        /// </summary>
+        public static async Task<LanzouEncryptedFileInfo?> GetHtmlToPassContentDataAsync(string postsign, string key)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, "https://syxz.lanzoue.com/ajaxm.php");
+            SetCommonHeaders(request);
+            request.Headers.Referrer = new Uri("https://syxz.lanzoue.com");
+
+            var postData = new Dictionary<string, string>
+            {
+                ["action"] = "downprocess",
+                ["sign"] = postsign,
+                ["p"] = key
+            };
+            request.Content = new FormUrlEncodedContent(postData);
+
+            try
+            {
+                var response = await client.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+
+                var content = await response.Content.ReadAsStringAsync();
+                var jsonResponse = Newtonsoft.Json.Linq.JObject.Parse(content);
+
+                var fileInfo = new LanzouEncryptedFileInfo
+                {
+                    Status = jsonResponse["zt"]?.ToObject<int>() ?? 0,
+                    Domain = jsonResponse["dom"]?.ToString(),
+                    Url = jsonResponse["url"]?.ToString(),
+                    FileName = jsonResponse["inf"]?.ToString()
+                };
+
+                return fileInfo;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 获取最终直链
+        /// </summary>
+        public static async Task<(DownloadState State, string? Url)> GetFinalUrlAsync(string? intermediateUrl)
+        {
+            if (string.IsNullOrEmpty(intermediateUrl))
+                return (DownloadState.IntermediateUrlNotFound, null);
+
+            var request = new HttpRequestMessage(HttpMethod.Get, intermediateUrl);
+            SetFinalUrlHeaders(request);
+
+            try
+            {
+                var response = await clientNoRedirect.SendAsync(request);
+
+                if (response.StatusCode != HttpStatusCode.Found && response.StatusCode != HttpStatusCode.MovedPermanently)
+                    return (DownloadState.FinalUrlNotFound, null);
+
+                var location = response.Headers.Location;
+                if (location == null)
+                    return (DownloadState.FinalUrlNotFound, null);
+
+                if (!location.IsAbsoluteUri)
+                {
+                    var baseUri = new Uri(intermediateUrl);
+                    var newUri = new Uri(baseUri, location);
+                    return (DownloadState.Success, newUri.ToString());
+                }
+
+                return (DownloadState.Success, location.ToString());
+            }
+            catch
+            {
+                return (DownloadState.Error, null);
+            }
         }
 
         /// <summary>
         /// 获取中间链接
         /// </summary>
-        /// <param name="htmlContent"></param>
-        /// <returns></returns>
         public static string? ExtractAndCombineLinks(string? htmlContent)
         {
             if (htmlContent == null)
@@ -120,93 +227,11 @@ namespace KCNLanzouDirectLink
         }
 
         /// <summary>
-        /// 获取最终直链
-        /// </summary>
-        /// <param name="intermediateUrl"></param>
-        /// <returns></returns>
-        public static async Task<string?> GetFinalUrlAsync(string? intermediateUrl)
-        {
-            if (string.IsNullOrEmpty(intermediateUrl))
-                return null;
-
-            HttpClientHandler handler = new HttpClientHandler
-            {
-                AllowAutoRedirect = false,
-            };
-
-            using HttpClient client = new HttpClient(handler);
-            client.DefaultRequestHeaders.Clear();
-            client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7");
-            client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate, br, zstd");
-            client.DefaultRequestHeaders.Add("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6");
-            client.DefaultRequestHeaders.Add("Connection", "keep-alive");
-            client.DefaultRequestHeaders.Add("Host", "slssq.osslan.com:446");
-            client.DefaultRequestHeaders.Add("Sec-CH-UA", "\"Chromium\";v=\"130\", \"Microsoft Edge\";v=\"130\", \"Not?A_Brand\";v=\"99\"");
-            client.DefaultRequestHeaders.Add("Sec-CH-UA-Mobile", "?0");
-            client.DefaultRequestHeaders.Add("Sec-CH-UA-Platform", "\"Windows\"");
-            client.DefaultRequestHeaders.Add("Sec-Fetch-Dest", "document");
-            client.DefaultRequestHeaders.Add("Sec-Fetch-Mode", "navigate");
-            client.DefaultRequestHeaders.Add("Sec-Fetch-Site", "none");
-            client.DefaultRequestHeaders.Add("Sec-Fetch-User", "?1");
-            client.DefaultRequestHeaders.Add("Upgrade-Insecure-Requests", "1");
-            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0");
-
-            HttpResponseMessage response = await client.GetAsync(intermediateUrl);
-
-            if ((int)response.StatusCode < 300 || (int)response.StatusCode >= 400)
-                return null;
-
-            if (!response.Headers.Contains("Location"))
-                return null;
-
-            return response.Headers?.Location?.ToString();
-        }
-
-        /// <summary>
-        /// 获取最终直链(加密)
-        /// </summary>
-        /// <param name="intermediateUrl"></param>
-        /// <returns></returns>
-        public static async Task<string?> GetFinalUrlToPassAsync(string? intermediateUrl)
-        {
-            if (string.IsNullOrEmpty(intermediateUrl))
-                return null;
-
-            HttpClientHandler handler = new HttpClientHandler
-            {
-                AllowAutoRedirect = false,
-            };
-
-            using HttpClient client = new HttpClient(handler);
-            client.DefaultRequestHeaders.Clear();
-            client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7");
-            client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate");
-            client.DefaultRequestHeaders.Add("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6");
-            client.DefaultRequestHeaders.Add("Host", "develope-oss.lanzouc.com");
-            client.DefaultRequestHeaders.Add("Proxy-Connection", "keep-alive");
-            client.DefaultRequestHeaders.Add("Upgrade-Insecure-Requests", "1");
-            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0");
-
-            HttpResponseMessage response = await client.GetAsync(intermediateUrl);
-
-            if ((int)response.StatusCode < 300 || (int)response.StatusCode >= 400)
-                return null;
-
-            if (!response.Headers.Contains("Location"))
-                return null;
-
-            return response.Headers?.Location?.ToString();
-        }
-
-        /// <summary>
         /// 正则提取html值
         /// </summary>
-        /// <param name="htmlContent"></param>
-        /// <param name="pattern"></param>
-        /// <returns></returns>
-        private static string? ExtractPatternValue(string htmlContent, string pattern)
+        public static string? ExtractPatternValue(string htmlContent, string pattern)
         {
-            var regex = new Regex(pattern, RegexOptions.Compiled);
+            var regex = new Regex(pattern);
             var match = regex.Match(htmlContent);
             return match.Success ? match.Groups[1].Value : null;
         }
@@ -214,8 +239,6 @@ namespace KCNLanzouDirectLink
         /// <summary>
         /// 格式化Url
         /// </summary>
-        /// <param name="url"></param>
-        /// <returns></returns>
         public static string ModifyUrlForTp(string url)
         {
             int lastSlashIndex = url.LastIndexOf('/');
@@ -227,26 +250,38 @@ namespace KCNLanzouDirectLink
         /// <summary>
         /// 格式化加密Url
         /// </summary>
-        /// <param name="domain"></param>
-        /// <param name="url"></param>
-        /// <returns></returns>
         public static string BuildDownloadUrl(string domain, string url)
         {
-            string fullUrl = domain + "/file/" + WebUtility.UrlDecode(url);
-            return fullUrl;
+            return $"{domain}/file/{WebUtility.UrlDecode(url)}";
         }
 
         /// <summary>
-        /// 解压Gzip数据
+        /// 设置常用的请求头
         /// </summary>
-        /// <param name="gzipData"></param>
-        /// <returns></returns>
-        private static string DecompressGzip(byte[] gzipData)
+        private static void SetCommonHeaders(HttpRequestMessage request)
         {
-            using var ms = new MemoryStream(gzipData);
-            using var gzipStream = new GZipStream(ms, CompressionMode.Decompress);
-            using var reader = new StreamReader(gzipStream, Encoding.UTF8);
-            return reader.ReadToEnd();
+            request.Headers.UserAgent.ParseAdd("Mozilla/5.0 (iPhone; CPU iPhone OS 6_0 like Mac OS X)");
+            request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
+            request.Headers.AcceptLanguage.ParseAdd("zh-CN,zh;q=0.9");
+            request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true };
+            request.Headers.Pragma.Add(new NameValueHeaderValue("no-cache"));
+            request.Headers.Connection.Add("keep-alive");
+            request.Headers.Add("Upgrade-Insecure-Requests", "1");
+        }
+
+        /// <summary>
+        /// 设置获取最终直链的请求头
+        /// </summary>
+        private static void SetFinalUrlHeaders(HttpRequestMessage request)
+        {
+            request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
+            request.Headers.AcceptLanguage.ParseAdd("zh-CN,zh;q=0.9");
+            request.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+            request.Headers.Add("Sec-Fetch-Dest", "document");
+            request.Headers.Add("Sec-Fetch-Mode", "navigate");
+            request.Headers.Add("Sec-Fetch-Site", "none");
+            request.Headers.Add("Sec-Fetch-User", "?1");
+            request.Headers.Add("Upgrade-Insecure-Requests", "1");
         }
     }
 }
