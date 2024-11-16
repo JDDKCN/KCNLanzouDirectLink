@@ -46,7 +46,7 @@ class Program
     static async Task Main(string[] args)
     {
         string shareUrl = "https://syxz.lanzoue.com/qwertyuiopas";
-        string? (state, link) = await KCNLanzouLinkHelper.GetDirectLinkAsync(shareUrl);
+        var (state, link) = await KCNLanzouLinkHelper.GetDirectLinkAsync(shareUrl);
 
         if (state == DownloadState.Success)
         {
