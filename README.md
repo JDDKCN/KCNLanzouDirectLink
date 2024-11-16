@@ -46,9 +46,16 @@ class Program
     static async Task Main(string[] args)
     {
         string shareUrl = "https://syxz.lanzoue.com/qwertyuiopas";
-        string? link = await KCNLanzouLinkHelper.GetDirectLinkAsync(shareUrl);
+        string? (state, link) = await KCNLanzouLinkHelper.GetDirectLinkAsync(shareUrl);
 
-        Console.WriteLine($"直链地址: {link}");
+        if (state == DownloadState.Success)
+        {
+            Console.WriteLine($"直链地址: {link}");
+        }
+        else
+        {
+            Console.WriteLine($"获取直链失败，状态: {state}");
+        }
     }
 }
 ```
@@ -81,6 +88,8 @@ class Program
 获取链接的文件信息
 
 ```csharp
+using KCNLanzouDirectLink;
+
 class Program
 {
     static async Task Main(string[] args)
