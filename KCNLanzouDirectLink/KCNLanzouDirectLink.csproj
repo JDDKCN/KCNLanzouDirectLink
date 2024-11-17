@@ -7,7 +7,7 @@
 
 		<!-- NuGet -->
 		<PackageId>KCNLanzouDirectLink</PackageId>
-		<Version>1.1.1</Version>
+		<Version>1.1.2</Version>
 		<Authors>剧毒的KCN(JDDKCN)</Authors>
 		<Company>KCN-Server</Company>
 		<Description>用于解析蓝奏云直链的C#原生实现类库。</Description>
@@ -29,9 +29,11 @@
 		<PackageProjectUrl>https://github.com/JDDKCN/KCNLanzouDirectLink</PackageProjectUrl>
 		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
 		<PackageReleaseNotes>更新内容：
-1. 修复了bug。 </PackageReleaseNotes>
+1. 添加了包内XML注释。 
+2. 完善了直链批量解析逻辑。</PackageReleaseNotes>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageIcon>favicon.png</PackageIcon>
+		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 	</PropertyGroup>
 
 	<ItemGroup>

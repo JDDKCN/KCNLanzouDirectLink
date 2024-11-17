@@ -9,6 +9,7 @@
 
 - 支持解析蓝奏云分享直链 & 加密分享直链。
 - 支持解析分享 & 加密分享链接的文件信息。
+- 支持批量解析。
 - 不使用curl，原生实现所有功能。
 - 提供标准错误处理模式。
 - 完整的实现 Demo，快速上手。
@@ -71,7 +72,9 @@ class Program
     {
         string shareUrl = "https://syxz.lanzoue.com/qwertyuiopas";
         string key = "your_encryption_key";  
-        var (state, linkEncryption) = await KCNLanzouLinkHelper.GetFullUrl(shareUrl, key);
+
+        // 10 代表错误后重试次数。加密链接获取直链不稳定，推荐设置为10次。
+        var (state, linkEncryption) = await KCNLanzouLinkHelper.GetDirectLinkAsync(shareUrl, key, 10);
 
         if (state == DownloadState.Success)
         {
@@ -80,6 +83,39 @@ class Program
         else
         {
             Console.WriteLine($"获取直链失败，状态: {state}");
+        }
+    }
+}
+```
+
+批量获取分享链接直链(支持普通/加密链接混合获取)
+
+```csharp
+using KCNLanzouDirectLink;
+
+class Program
+{
+    static async Task Main(string[] args)
+    {
+        var urls = new List<Tuple<string, string>>
+        {
+           Tuple.Create("https://syxz.lanzoue.com/qwertyuiopas", string.Empty),
+           Tuple.Create("https://syxz.lanzouw.com/abcdefghijkl", "your_encryption_key")
+        };
+
+        // 该方法泛型传参允许实现 string 及 Tuple<string, string>。
+        var results = await KCNLanzouLinkHelper.GetDirectLinksAsync(urls);
+
+        foreach (var (url, state, link) in results)
+        {
+            if (state == DownloadState.Success)
+            {
+                Console.WriteLine($"{url} 解析直链地址: {link}");
+            }
+            else
+            {
+                Console.WriteLine($"{url} 获取直链失败，状态: {state}");
+            }
         }
     }
 }

@@ -2,30 +2,51 @@ namespace KCNLanzouDirectLink.Demo
 {
     public partial class FormMain : Sunny.UI.UIForm
     {
+        private static List<Tuple<string, string?>>? linkList;
+
         public FormMain()
         {
             InitializeComponent();
+            linkList = [];
         }
 
         private async void uiButton1_Click(object sender, EventArgs e)
         {
+            if (linkList.Count > 0)
+            {
+                var results = await KCNLanzouLinkHelper.GetDirectLinksAsync(linkList, 10);
+                string text = string.Empty;
+
+                foreach (var (url, state, link) in results)
+                {
+                    if (state == DownloadState.Success)
+                    {
+                        text += $"{url} 解析直链地址: {link}\n";
+                    }
+                    else
+                    {
+                        text += $"{url} 获取直链失败，状态: {state}\n";
+                    }
+                }
+
+                KUI.Info(text);
+                uiButton1.Text = "获取直链";
+                linkList.Clear();
+
+                return;
+            }
+
             if (string.IsNullOrEmpty(uiTextBox1.Text))
             {
                 KUI.Error("请填入分享链接！\nPlease enter the shared link!");
                 return;
             }
 
-            (DownloadState state, string? link) result = (DownloadState.Error, null);
+            (DownloadState state, string? link) result;
 
             if (!string.IsNullOrEmpty(uiTextBox2.Text))
             {
-                // 蓝奏云加密直链获取不稳定，多尝试几次
-                for (int i = 0; i < 10; i++)
-                {
-                    result = await KCNLanzouLinkHelper.GetDirectLinkAsync(uiTextBox1.Text, uiTextBox2.Text);
-                    if (result.state == DownloadState.Success)
-                        break;
-                }
+                result = await KCNLanzouLinkHelper.GetDirectLinkAsync(uiTextBox1.Text, uiTextBox2.Text, 10);
             }
             else
             {
@@ -107,6 +128,19 @@ namespace KCNLanzouDirectLink.Demo
                         break;
                 }
             }
+        }
+
+        private void uiButton3_Click(object sender, EventArgs e)
+        {
+            if (string.IsNullOrEmpty(uiTextBox1.Text))
+            {
+                KUI.Error("请填入分享链接！\nPlease enter the shared link!");
+                return;
+            }
+
+            linkList.Add(new Tuple<string, string?>(uiTextBox1.Text, uiTextBox2.Text));
+            uiButton1.Text = $"获取直链({linkList.Count})";
+            uiTextBox1.Text = uiTextBox2.Text = string.Empty;
         }
     }
 }

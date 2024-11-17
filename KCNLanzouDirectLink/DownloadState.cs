@@ -1,5 +1,8 @@
 ﻿namespace KCNLanzouDirectLink
 {
+    /// <summary>
+    /// 操作状态枚举类
+    /// </summary>
     public enum DownloadState
     {
         /// <summary>

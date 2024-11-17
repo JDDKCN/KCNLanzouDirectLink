@@ -34,6 +34,7 @@
             uiLabel1 = new Sunny.UI.UILabel();
             uiLabel2 = new Sunny.UI.UILabel();
             uiButton2 = new Sunny.UI.UIButton();
+            uiButton3 = new Sunny.UI.UIButton();
             SuspendLayout();
             // 
             // uiButton1
@@ -71,7 +72,7 @@
             uiTextBox2.Name = "uiTextBox2";
             uiTextBox2.Padding = new Padding(5);
             uiTextBox2.ShowText = false;
-            uiTextBox2.Size = new Size(561, 64);
+            uiTextBox2.Size = new Size(410, 64);
             uiTextBox2.TabIndex = 2;
             uiTextBox2.TextAlignment = ContentAlignment.MiddleLeft;
             uiTextBox2.Watermark = "文件分享密码(可选)";
@@ -123,10 +124,24 @@
             uiButton2.TipsFont = new Font("宋体", 9F, FontStyle.Regular, GraphicsUnit.Point, 134);
             uiButton2.Click += uiButton2_Click;
             // 
+            // uiButton3
+            // 
+            uiButton3.Font = new Font("微软雅黑", 12F, FontStyle.Regular, GraphicsUnit.Point, 134);
+            uiButton3.Location = new Point(534, 227);
+            uiButton3.MinimumSize = new Size(1, 1);
+            uiButton3.Name = "uiButton3";
+            uiButton3.Size = new Size(144, 64);
+            uiButton3.Style = Sunny.UI.UIStyle.Custom;
+            uiButton3.TabIndex = 6;
+            uiButton3.Text = "+列表";
+            uiButton3.TipsFont = new Font("宋体", 9F, FontStyle.Regular, GraphicsUnit.Point, 134);
+            uiButton3.Click += uiButton3_Click;
+            // 
             // FormMain
             // 
             AutoScaleMode = AutoScaleMode.None;
             ClientSize = new Size(800, 450);
+            Controls.Add(uiButton3);
             Controls.Add(uiButton2);
             Controls.Add(uiLabel2);
             Controls.Add(uiLabel1);
@@ -150,5 +165,6 @@
         private Sunny.UI.UILabel uiLabel1;
         private Sunny.UI.UILabel uiLabel2;
         private Sunny.UI.UIButton uiButton2;
+        private Sunny.UI.UIButton uiButton3;
     }
 }

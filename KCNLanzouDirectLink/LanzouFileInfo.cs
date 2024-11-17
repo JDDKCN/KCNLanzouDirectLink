@@ -1,5 +1,8 @@
 ﻿namespace KCNLanzouDirectLink
 {
+    /// <summary>
+    /// 文件信息结构类
+    /// </summary>
     public class LanzouFileInfo
     {
         /// <summary>
