@@ -87,7 +87,7 @@
             uiLabel1.Name = "uiLabel1";
             uiLabel1.Size = new Size(800, 48);
             uiLabel1.TabIndex = 3;
-            uiLabel1.Text = "Copyright ©2023-2024 剧毒的KCN, All Rights Reserved.";
+            uiLabel1.Text = "Copyright ©2023-2025 剧毒的KCN, All Rights Reserved.";
             uiLabel1.TextAlign = ContentAlignment.MiddleCenter;
             // 
             // uiLabel2

@@ -1,13 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFrameworks>net6.0;net7.0;net8.0;</TargetFrameworks>
+		<TargetFrameworks>net6.0;net7.0;net8.0;net9.0;</TargetFrameworks>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 
 		<!-- NuGet -->
 		<PackageId>KCNLanzouDirectLink</PackageId>
-		<Version>1.1.2</Version>
+		<Version>1.1.3</Version>
 		<Authors>剧毒的KCN(JDDKCN)</Authors>
 		<Company>KCN-Server</Company>
 		<Description>用于解析蓝奏云直链的C#原生实现类库。</Description>
@@ -29,8 +29,8 @@
 		<PackageProjectUrl>https://github.com/JDDKCN/KCNLanzouDirectLink</PackageProjectUrl>
 		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
 		<PackageReleaseNotes>更新内容：
-1. 添加了包内XML注释。 
-2. 完善了直链批量解析逻辑。</PackageReleaseNotes>
+1. 同步适配蓝奏云改动解析方法。
+2. 添加.NET9.0支持。</PackageReleaseNotes>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageIcon>favicon.png</PackageIcon>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>

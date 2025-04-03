@@ -79,8 +79,6 @@ namespace KCNLanzouDirectLink
             if (url == null)
                 return null;
 
-            url = ModifyUrlForTp(url);
-
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             SetCommonHeaders(request);
 
@@ -89,7 +87,26 @@ namespace KCNLanzouDirectLink
                 var response = await client.SendAsync(request);
                 response.EnsureSuccessStatusCode();
 
-                return await response.Content.ReadAsStringAsync();
+                var content = await response.Content.ReadAsStringAsync();
+
+                var match = Regex.Match(content, @"<div class=""mh""><a href=""([^""]+)""");
+                if (match.Success)
+                {
+                    string tpPath = match.Groups[1].Value;
+                    if (!string.IsNullOrEmpty(tpPath))
+                    {
+                        var baseUri = new Uri(url);
+                        var tpUrl = new Uri(baseUri, tpPath).ToString();
+
+                        request = new HttpRequestMessage(HttpMethod.Get, tpUrl);
+                        SetCommonHeaders(request);
+                        response = await client.SendAsync(request);
+                        response.EnsureSuccessStatusCode();
+                        return await response.Content.ReadAsStringAsync();
+                    }
+                }
+
+                return content;
             }
             catch
             {
@@ -234,17 +251,6 @@ namespace KCNLanzouDirectLink
             var regex = new Regex(pattern);
             var match = regex.Match(htmlContent);
             return match.Success ? match.Groups[1].Value : null;
-        }
-
-        /// <summary>
-        /// 格式化Url
-        /// </summary>
-        public static string ModifyUrlForTp(string url)
-        {
-            int lastSlashIndex = url.LastIndexOf('/');
-            if (lastSlashIndex == -1)
-                return url;
-            return url.Substring(0, lastSlashIndex + 1) + "tp/" + url.Substring(lastSlashIndex + 1);
         }
 
         /// <summary>
