@@ -1,10 +1,17 @@
-﻿namespace KCNLanzouDirectLink
+﻿using KCNLanzouDirectLink.Services;
+using KCNLanzouDirectLink.Models;
+using KCNLanzouDirectLink.Core;
+
+namespace KCNLanzouDirectLink
 {
     /// <summary>
     /// 解析蓝奏云直链
     /// </summary>
     public static class KCNLanzouLinkHelper
     {
+        private static readonly NormalFileService _normalFileService = new();
+        private static readonly EncryptedFileService _encryptedFileService = new();
+
         /// <summary>
         /// 获取蓝奏云分享链接的直链。
         /// </summary>
@@ -12,7 +19,12 @@
         /// <returns>返回解析后的直链，若失败则返回 null</returns>
         public static async Task<(DownloadState State, string? Url)> GetDirectLinkAsync(string url)
         {
-            return await GetUrlHelper.GetFullUrl(url);
+            if (!LanzouDomainParser.IsLanzouUrl(url))
+            {
+                return (DownloadState.UrlNotProvided, null);
+            }
+
+            return await _normalFileService.GetDirectLinkAsync(url);
         }
 
         /// <summary>
@@ -24,13 +36,21 @@
         /// <returns>返回解析后的直链，若失败则返回 null</returns>
         public static async Task<(DownloadState State, string? Url)> GetDirectLinkAsync(string url, string key, int readyNum = 0)
         {
-            if (readyNum <= 0)
-                return await GetUrlHelper.GetFullUrl(url, key);
-
-            (DownloadState state, string? link) result = (DownloadState.Error, null);
-            for (int i = 0; i < 10; i++)
+            if (!LanzouDomainParser.IsLanzouUrl(url))
             {
-                result = await GetUrlHelper.GetFullUrl(url, key);
+                return (DownloadState.UrlNotProvided, null);
+            }
+
+            if (readyNum <= 0)
+            {
+                return await _encryptedFileService.GetDirectLinkAsync(url, key);
+            }
+
+            // 重试逻辑
+            (DownloadState state, string? link) result = (DownloadState.Error, null);
+            for (int i = 0; i < readyNum; i++)
+            {
+                result = await _encryptedFileService.GetDirectLinkAsync(url, key);
                 if (result.state == DownloadState.Success)
                     break;
             }
@@ -85,7 +105,12 @@
         /// <returns></returns>
         public static async Task<(DownloadState State, LanzouFileInfo? FileInfo)> GetFileInfoAsync(string url)
         {
-            return await GetUrlInfoHelper.ParseFileInfoAsync(false, url);
+            if (!LanzouDomainParser.IsLanzouUrl(url))
+            {
+                return (DownloadState.UrlNotProvided, null);
+            }
+
+            return await _normalFileService.GetFileInfoAsync(url);
         }
 
         /// <summary>
@@ -96,7 +121,12 @@
         /// <returns></returns>
         public static async Task<(DownloadState State, LanzouFileInfo? FileInfo)> GetFileInfoAsync(string url, string key)
         {
-            return await GetUrlInfoHelper.ParseFileInfoAsync(true, url, key);
+            if (!LanzouDomainParser.IsLanzouUrl(url))
+            {
+                return (DownloadState.UrlNotProvided, null);
+            }
+
+            return await _encryptedFileService.GetFileInfoAsync(url, key);
         }
 
         /// <summary>
@@ -108,8 +138,19 @@
         /// <returns></returns>
         public static async Task<(DownloadState State, LanzouFileInfo? FileInfo)> GetFileInfoAsync(bool isEncryption, string url, string key = "")
         {
-            return await GetUrlInfoHelper.ParseFileInfoAsync(isEncryption, url, key);
-        }
+            if (!LanzouDomainParser.IsLanzouUrl(url))
+            {
+                return (DownloadState.UrlNotProvided, null);
+            }
 
+            if (isEncryption)
+            {
+                return await _encryptedFileService.GetFileInfoAsync(url, key);
+            }
+            else
+            {
+                return await _normalFileService.GetFileInfoAsync(url);
+            }
+        }
     }
 }

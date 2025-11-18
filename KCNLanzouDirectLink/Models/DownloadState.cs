@@ -1,4 +1,4 @@
-﻿namespace KCNLanzouDirectLink
+﻿namespace KCNLanzouDirectLink.Models
 {
     /// <summary>
     /// 操作状态枚举类

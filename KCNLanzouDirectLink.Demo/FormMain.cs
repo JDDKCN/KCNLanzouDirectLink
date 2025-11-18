@@ -1,3 +1,5 @@
+using KCNLanzouDirectLink.Models;
+
 namespace KCNLanzouDirectLink.Demo
 {
     public partial class FormMain : Sunny.UI.UIForm
@@ -12,7 +14,7 @@ namespace KCNLanzouDirectLink.Demo
 
         private async void uiButton1_Click(object sender, EventArgs e)
         {
-            if (linkList.Count > 0)
+            if (linkList != null && linkList.Count > 0)
             {
                 var results = await KCNLanzouLinkHelper.GetDirectLinksAsync(linkList, 10);
                 string text = string.Empty;
@@ -138,6 +140,7 @@ namespace KCNLanzouDirectLink.Demo
                 return;
             }
 
+            linkList ??= [];
             linkList.Add(new Tuple<string, string?>(uiTextBox1.Text, uiTextBox2.Text));
             uiButton1.Text = $"ªÒ»°÷±¡¥({linkList.Count})";
             uiTextBox1.Text = uiTextBox2.Text = string.Empty;
