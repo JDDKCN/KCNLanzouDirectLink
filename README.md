@@ -7,18 +7,22 @@
 
 ## 项目特点
 
-- 支持解析蓝奏云分享直链 & 加密分享直链。
-- 支持解析分享 & 加密分享链接的文件信息。
-- 支持批量解析。
-- 不使用curl，原生实现所有功能。
-- 提供标准错误处理模式。
-- 完整的实现 Demo，快速上手。
+- ✅ 支持解析蓝奏云普通分享直链 & 加密分享直链
+- ✅ 支持解析普通分享 & 加密分享链接的文件信息
+- ✅ 支持批量解析
+- ✅ 自动处理阿里云盾反爬虫机制
+- ✅ 智能过滤垃圾广告下崽器页面（自动重试）
+- ✅ 支持所有蓝奏云域名变体
+- ✅ 兼容新旧版页面
+- ✅ 不使用curl，原生实现所有功能
+- ✅ 提供标准错误处理模式
+- ✅ 完整的实现 Demo，快速上手
 
 ## 支持
 
 本项目支持以下 .NET 版本：
 
-- `.NET 6`、`.NET 7`、`.NET 8`、以及更高版本的 .NET。
+- `.NET 6`、`.NET 7`、`.NET 8`、`.NET 9`、`.NET 10`、以及更高版本的 .NET。
 
 
 ## 安装
@@ -73,8 +77,8 @@ class Program
         string shareUrl = "https://syxz.lanzoue.com/qwertyuiopas";
         string key = "your_encryption_key";  
 
-        // 10 代表错误后重试次数。加密链接获取直链不稳定，推荐设置为10次。
-        var (state, linkEncryption) = await KCNLanzouLinkHelper.GetDirectLinkAsync(shareUrl, key, 10);
+        // 3 代表错误后重试次数。加密链接获取直链可能不稳定，推荐设置为3次。
+        var (state, linkEncryption) = await KCNLanzouLinkHelper.GetDirectLinkAsync(shareUrl, key, 3);
 
         if (state == DownloadState.Success)
         {
@@ -157,7 +161,31 @@ class Program
 }
 ```
 
-枚举 `DownloadState` 说明
+
+## 高级特性
+
+### 自动反爬虫处理
+
+本库自动处理蓝奏云的反爬虫机制，包括：
+
+- **Cookie验证**：自动计算并添加 `acw_sc__v2` Cookie
+- **阿里云盾绕过**：自动处理 `arg1` 参数并进行XOR运算
+- **智能重试**：检测到反爬虫响应时自动重试
+
+无需手动处理，完全自动化。
+
+### 垃圾广告下崽器过滤
+
+自动识别并跳过蓝奏云的下崽器推广页面：
+
+- 自动检测广告Html页特征
+- 智能重试获取真实下载页面
+- 用户无感知，透明处理
+
+
+## API 参考
+
+### 枚举 `DownloadState` 说明
 
 ```csharp
 public enum DownloadState
@@ -199,7 +227,7 @@ public enum DownloadState
 }
 ```
 
-文件信息获取结构类 `LanzouFileInfo` 说明
+### 文件信息获取结构类 `LanzouFileInfo` 说明
 
 ```csharp
     public class LanzouFileInfo
