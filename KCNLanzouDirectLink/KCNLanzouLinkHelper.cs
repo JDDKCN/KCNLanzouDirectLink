@@ -1,6 +1,6 @@
-﻿using KCNLanzouDirectLink.Services;
+﻿using KCNLanzouDirectLink.Core;
 using KCNLanzouDirectLink.Models;
-using KCNLanzouDirectLink.Core;
+using KCNLanzouDirectLink.Services;
 
 namespace KCNLanzouDirectLink
 {
@@ -16,15 +16,30 @@ namespace KCNLanzouDirectLink
         /// 获取蓝奏云分享链接的直链。
         /// </summary>
         /// <param name="url">蓝奏云分享链接</param>
+        /// <param name="readyNum">重试次数(默认为3，0为不重试)</param>
         /// <returns>返回解析后的直链，若失败则返回 null</returns>
-        public static async Task<(DownloadState State, string? Url)> GetDirectLinkAsync(string url)
+        public static async Task<(DownloadState State, string? Url)> GetDirectLinkAsync(string url, int readyNum = 3)
         {
             if (!LanzouDomainParser.IsLanzouUrl(url))
             {
                 return (DownloadState.UrlNotProvided, null);
             }
 
-            return await _normalFileService.GetDirectLinkAsync(url);
+            if (readyNum <= 0)
+            {
+                return await _normalFileService.GetDirectLinkAsync(url);
+            }
+
+            // 重试逻辑
+            (DownloadState state, string? link) result = (DownloadState.Error, null);
+            for (int i = 0; i < readyNum; i++)
+            {
+                result = await _normalFileService.GetDirectLinkAsync(url);
+                if (result.state == DownloadState.Success)
+                    break;
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -32,9 +47,9 @@ namespace KCNLanzouDirectLink
         /// </summary>
         /// <param name="url">蓝奏云分享链接</param>
         /// <param name="key">加密密钥</param>
-        /// <param name="readyNum">重试次数(默认为0，不重试)</param>
+        /// <param name="readyNum">重试次数(默认为3，0为不重试)</param>
         /// <returns>返回解析后的直链，若失败则返回 null</returns>
-        public static async Task<(DownloadState State, string? Url)> GetDirectLinkAsync(string url, string key, int readyNum = 0)
+        public static async Task<(DownloadState State, string? Url)> GetDirectLinkAsync(string url, string key, int readyNum = 3)
         {
             if (!LanzouDomainParser.IsLanzouUrl(url))
             {

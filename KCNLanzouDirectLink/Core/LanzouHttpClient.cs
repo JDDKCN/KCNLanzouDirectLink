@@ -6,13 +6,14 @@ using System.Net.Http.Headers;
 namespace KCNLanzouDirectLink.Core;
 
 /// <summary>
-/// 蓝奏云HTTP客户端基类 - 处理反爬虫机制
+/// 蓝奏云 HTTP 客户端基类
 /// </summary>
 internal class LanzouHttpClient
 {
     protected readonly HttpClient _client;
     protected readonly HttpClient _clientNoRedirect;
     protected readonly AntiCrawlerHandler _antiCrawlerHandler;
+    protected readonly CookieContainer _cookieContainer = new();
     protected LanzouDomainInfo? _domainInfo;
 
     public LanzouHttpClient()
@@ -20,7 +21,8 @@ internal class LanzouHttpClient
         var handler = new HttpClientHandler
         {
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
-            UseCookies = false
+            UseCookies = true, 
+            CookieContainer = _cookieContainer
         };
 
         _client = new HttpClient(handler);
@@ -28,7 +30,9 @@ internal class LanzouHttpClient
         var handlerNoRedirect = new HttpClientHandler
         {
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
-            AllowAutoRedirect = false
+            AllowAutoRedirect = false,
+            UseCookies = true,
+            CookieContainer = _cookieContainer
         };
 
         _clientNoRedirect = new HttpClient(handlerNoRedirect);
@@ -43,7 +47,7 @@ internal class LanzouHttpClient
         _domainInfo = LanzouDomainParser.ParseUrl(url);
         if (_domainInfo == null)
         {
-            Debug.WriteLine($"无效的蓝奏云URL: {url}");
+            Debug.WriteLine($"无效的蓝奏云 URL: {url}");
             return false;
         }
 
@@ -51,13 +55,13 @@ internal class LanzouHttpClient
         Debug.WriteLine($"  完整域名: {_domainInfo.FullDomain}");
         Debug.WriteLine($"  基础域名: {_domainInfo.BaseDomain}");
         Debug.WriteLine($"  子域名: {_domainInfo.Subdomain ?? "(无)"}");
-        Debug.WriteLine($"  基础URL: {_domainInfo.BaseUrl}");
+        Debug.WriteLine($"  基础 URL: {_domainInfo.BaseUrl}");
 
         return true;
     }
 
     /// <summary>
-    /// 发送请求（自动处理反爬虫和垃圾广告）
+    /// 发送请求
     /// </summary>
     protected async Task<string?> SendRequestWithAntiCrawlerAsync(
         HttpRequestMessage request,
@@ -74,22 +78,25 @@ internal class LanzouHttpClient
             // 是否触发反爬虫Cookie验证
             if (_antiCrawlerHandler.IsAntiCrawlerResponse(content))
             {
-                Debug.WriteLine("检测到反爬虫机制，开始处理...");
+                Debug.WriteLine($"[{request.RequestUri!.Host}] 检测到反爬虫机制，开始处理...");
 
-                var cookie = await _antiCrawlerHandler.HandleAntiCrawlerAsync(content);
-                if (string.IsNullOrEmpty(cookie))
+                var cookieStr = _antiCrawlerHandler.HandleAntiCrawler(content);
+                if (string.IsNullOrEmpty(cookieStr))
                 {
                     Debug.WriteLine("反爬虫处理失败");
                     return null;
                 }
 
-                // 等待后重试
-                await Task.Delay(1500);
+                var cookieParts = cookieStr.Split(new[] { '=' }, 2);
+                if (cookieParts.Length == 2)
+                {
+                    var uri = new Uri($"{request.RequestUri.Scheme}://{request.RequestUri.Host}");
+                    _cookieContainer.Add(uri, new Cookie(cookieParts[0].Trim(), cookieParts[1].Trim()));
+                }
 
-                // 重新构建请求
+                await Task.Delay(500);
+
                 var retryRequest = CloneRequest(request, postData);
-                retryRequest.Headers.Add("Cookie", cookie);
-
                 var retryResponse = await _client.SendAsync(retryRequest);
                 retryResponse.EnsureSuccessStatusCode();
 
@@ -138,7 +145,6 @@ internal class LanzouHttpClient
     /// </summary>
     protected bool IsTrashAdPage(string htmlContent)
     {
-        // 多字符串特征识别
         // 包含 "使用全能电脑助手下载"
         if (htmlContent.Contains("使用全能电脑助手下载"))
             return true;
@@ -165,16 +171,17 @@ internal class LanzouHttpClient
     {
         var clone = new HttpRequestMessage(original.Method, original.RequestUri);
 
-        // 复制Headers
         foreach (var header in original.Headers)
         {
+            if (header.Key.Equals("Cookie", StringComparison.OrdinalIgnoreCase)) continue;
             clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
         }
 
-        // 重新设置Content
         if (postData != null && original.Method == HttpMethod.Post)
         {
-            clone.Content = new FormUrlEncodedContent(postData);
+            var rawData = string.Join("&", postData.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+            clone.Content = new StringContent(rawData);
+            clone.Content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/x-www-form-urlencoded");
         }
 
         return clone;
@@ -201,7 +208,8 @@ internal class LanzouHttpClient
     {
         try
         {
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            var uri = new Uri(url);
+            var request = new HttpRequestMessage(HttpMethod.Get, uri);
             SetCommonHeaders(request);
             request.Headers.Add("Sec-Fetch-Dest", "document");
             request.Headers.Add("Sec-Fetch-Mode", "navigate");
@@ -210,17 +218,50 @@ internal class LanzouHttpClient
 
             var response = await _clientNoRedirect.SendAsync(request);
 
+            // 处理 200 OK 状态下的反爬虫风控
+            if (response.StatusCode == HttpStatusCode.OK)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                if (_antiCrawlerHandler.IsAntiCrawlerResponse(content))
+                {
+                    Debug.WriteLine($"[{uri.Host}] 获取直链时触发反爬虫风控...");
+                    var cookieStr = _antiCrawlerHandler.HandleAntiCrawler(content);
+                    if (!string.IsNullOrEmpty(cookieStr))
+                    {
+                        var cookieParts = cookieStr.Split(new[] { '=' }, 2);
+                        if (cookieParts.Length == 2)
+                        {
+                            _cookieContainer.Add(new Uri($"{uri.Scheme}://{uri.Host}"), new Cookie(cookieParts[0].Trim(), cookieParts[1].Trim()));
+                        }
+
+                        await Task.Delay(1500);
+
+                        var retryRequest = new HttpRequestMessage(HttpMethod.Get, uri);
+                        SetCommonHeaders(retryRequest);
+                        retryRequest.Headers.Add("Sec-Fetch-Dest", "document");
+                        retryRequest.Headers.Add("Sec-Fetch-Mode", "navigate");
+                        retryRequest.Headers.Add("Sec-Fetch-Site", "none");
+                        retryRequest.Headers.Add("Sec-Fetch-User", "?1");
+
+                        response = await _clientNoRedirect.SendAsync(retryRequest);
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"[{uri.Host}] 直链反爬虫处理失败");
+                        return (false, null);
+                    }
+                }
+            }
+
             if (response.StatusCode != HttpStatusCode.Found &&
                 response.StatusCode != HttpStatusCode.MovedPermanently)
             {
+                Debug.WriteLine($"重定向失败，最终状态码: {response.StatusCode}");
                 return (false, null);
             }
 
             var location = response.Headers.Location;
-            if (location == null)
-            {
-                return (false, null);
-            }
+            if (location == null) return (false, null);
 
             if (!location.IsAbsoluteUri)
             {
@@ -231,8 +272,9 @@ internal class LanzouHttpClient
 
             return (true, location.ToString());
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine($"获取重定向URL异常: {ex.Message}");
             return (false, null);
         }
     }

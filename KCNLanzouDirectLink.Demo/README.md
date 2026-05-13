@@ -1,4 +1,4 @@
-﻿# KCNLanzouDirectLink.Demo - 类库使用示例程序
+﻿# KCNLanzouDirectLink.Demo - 类库使用示例 WinForms 程序
 
 ### 实现功能
 

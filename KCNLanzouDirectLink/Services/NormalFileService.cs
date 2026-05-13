@@ -1,7 +1,8 @@
 ﻿using KCNLanzouDirectLink.Core;
 using KCNLanzouDirectLink.Models;
-using Newtonsoft.Json.Linq;
 using System.Diagnostics;
+using System.Net;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace KCNLanzouDirectLink.Services
@@ -66,7 +67,8 @@ namespace KCNLanzouDirectLink.Services
         }
 
         /// <summary>
-        /// 获取下载页面内容（支持iframe和AJAX）
+        /// 获取下载页面内容
+        /// <para>支持iframe和AJAX</para>
         /// </summary>
         private async Task<string?> GetDownloadPageContentAsync(string url)
         {
@@ -92,7 +94,8 @@ namespace KCNLanzouDirectLink.Services
         }
 
         /// <summary>
-        /// 获取信息页面内容（不处理跳转）
+        /// 获取信息页面内容
+        /// <para>不处理跳转</para>
         /// </summary>
         private async Task<string?> GetInfoPageContentAsync(string url)
         {
@@ -117,26 +120,21 @@ namespace KCNLanzouDirectLink.Services
         private async Task<string?> TryProcessIframePageAsync(string mainPageContent, string mainPageUrl)
         {
             var iframeMatch = Regex.Match(mainPageContent, @"<iframe[^>]+src=""(/fn\?[^""]+)""");
-            if (!iframeMatch.Success)
+            if (!iframeMatch.Success || _domainInfo == null)
                 return null;
 
             var iframePath = iframeMatch.Groups[1].Value;
-            var fileId = ExtractFileId(mainPageContent);
-
-            if (_domainInfo == null)
-                return null;
-
             var iframeUrl = $"{_domainInfo.BaseUrl}{iframePath}";
-            var iframeContent = await FetchIframeContentAsync(iframeUrl);
+            var iframeContent = await FetchIframeContentAsync(iframeUrl, mainPageUrl);
 
             if (iframeContent == null)
                 return null;
 
-            // 检查是否是AJAX动态页面
-            if (IsAjaxDynamicPage(iframeContent))
-                return BuildAjaxMarker(iframeContent, fileId);
+            var fileId = ExtractFileId(iframeContent);
 
-            // 检查是否包含传统下载变量
+            if (IsAjaxDynamicPage(iframeContent))
+                return BuildAjaxMarker(iframeContent, fileId, iframeUrl);
+
             if (HasTraditionalDownloadVariables(iframeContent))
                 return iframeContent;
 
@@ -146,26 +144,31 @@ namespace KCNLanzouDirectLink.Services
         /// <summary>
         /// 获取iframe内容
         /// </summary>
-        private async Task<string?> FetchIframeContentAsync(string iframeUrl)
+        private async Task<string?> FetchIframeContentAsync(string iframeUrl, string refererUrl)
         {
             var request = new HttpRequestMessage(HttpMethod.Get, iframeUrl);
             SetCommonHeaders(request);
+
+            if (Uri.TryCreate(refererUrl, UriKind.Absolute, out var uri))
+                request.Headers.Referrer = uri;
+
             return await SendRequestWithAntiCrawlerAsync(request);
         }
 
         /// <summary>
         /// 构建AJAX标记
         /// </summary>
-        private string? BuildAjaxMarker(string iframeContent, string? fileId)
+        private string? BuildAjaxMarker(string iframeContent, string? fileId, string iframeUrl)
         {
             var signMatch = Regex.Match(iframeContent, @"var\s+wp_sign\s*=\s*['""]([^'""]+)['""]");
+            var ajaxDataMatch = Regex.Match(iframeContent, @"var\s+ajaxdata\s*=\s*['""]([^'""]+)['""]");
 
             if (signMatch.Success && !string.IsNullOrEmpty(fileId))
             {
                 var sign = signMatch.Groups[1].Value;
-                return $"AJAX|{sign}|{fileId}";
+                var ajaxdata = ajaxDataMatch.Success ? ajaxDataMatch.Groups[1].Value : "rewn";
+                return $"AJAX|{sign}|{fileId}|{ajaxdata}|{iframeUrl}";
             }
-
             return null;
         }
 
@@ -208,13 +211,15 @@ namespace KCNLanzouDirectLink.Services
         private async Task<string?> ProcessAjaxDownloadAsync(string ajaxMarker)
         {
             var parts = ajaxMarker.Split('|');
-            if (parts.Length != 3)
+            if (parts.Length != 5)
                 return null;
 
             var sign = parts[1];
             var fileId = parts[2];
+            var ajaxdata = parts[3];
+            var iframeUrl = parts[4];
 
-            return await FetchAjaxDownloadUrlAsync(sign, fileId);
+            return await FetchAjaxDownloadUrlAsync(sign, fileId, ajaxdata, iframeUrl);
         }
 
         /// <summary>
@@ -234,36 +239,53 @@ namespace KCNLanzouDirectLink.Services
         /// <summary>
         /// 通过AJAX获取下载URL
         /// </summary>
-        private async Task<string?> FetchAjaxDownloadUrlAsync(string sign, string fileId)
+        private async Task<string?> FetchAjaxDownloadUrlAsync(string sign, string fileId, string ajaxdata, string refererUrl)
         {
             if (_domainInfo == null)
                 return null;
 
             var ajaxUrl = $"{_domainInfo.BaseUrl}/ajaxm.php?file={fileId}";
-            var postData = BuildAjaxPostData(sign);
+            var postData = BuildAjaxPostData(sign, ajaxdata);
 
             var request = new HttpRequestMessage(HttpMethod.Post, ajaxUrl);
             SetCommonHeaders(request);
-            request.Headers.Referrer = new Uri(_domainInfo.BaseUrl);
-            request.Content = new FormUrlEncodedContent(postData);
+            request.Headers.Add("X-Requested-With", "XMLHttpRequest");
 
-            var content = await SendRequestWithAntiCrawlerAsync(request, postData);
-            if (content == null || !content.TrimStart().StartsWith("{"))
+            if (Uri.TryCreate(refererUrl, UriKind.Absolute, out var uri))
+                request.Headers.Referrer = uri;
+
+            // 前端风控 Cookie
+            var baseUri = new Uri(_domainInfo.BaseUrl);
+            _cookieContainer.Add(baseUri, new Cookie("pc_ad1", "1"));
+            _cookieContainer.Add(baseUri, new Cookie("codelen", "1"));
+
+            var content = new FormUrlEncodedContent(postData);
+            content.Headers.ContentType!.CharSet = string.Empty;
+            request.Content = content;
+
+            Debug.WriteLine($"[Ajax Post] URL: {ajaxUrl}");
+            Debug.WriteLine($"[Ajax Post] Data: {await request.Content.ReadAsStringAsync()}");
+
+            var responseContent = await SendRequestWithAntiCrawlerAsync(request, postData);
+
+            Debug.WriteLine($"[Ajax Response]: {responseContent}");
+
+            if (responseContent == null || !responseContent.TrimStart().StartsWith("{"))
                 return null;
 
-            return ParseAjaxResponse(content);
+            return ParseAjaxResponse(responseContent);
         }
 
         /// <summary>
         /// 构建AJAX POST数据
         /// </summary>
-        private Dictionary<string, string> BuildAjaxPostData(string sign)
+        private Dictionary<string, string> BuildAjaxPostData(string sign, string ajaxdata)
         {
             return new Dictionary<string, string>
             {
                 ["action"] = "downprocess",
-                ["websignkey"] = "rewn",
-                ["signs"] = "rewn",
+                ["websignkey"] = ajaxdata,
+                ["signs"] = ajaxdata,
                 ["sign"] = sign,
                 ["websign"] = "",
                 ["kd"] = "1",
@@ -278,9 +300,24 @@ namespace KCNLanzouDirectLink.Services
         {
             try
             {
-                var jsonResponse = JObject.Parse(jsonContent);
+                var jsonResponse = JsonNode.Parse(jsonContent);
+                if (jsonResponse == null)
+                    return null;
 
-                var status = jsonResponse["zt"]?.ToObject<int>() ?? 0;
+                int status = 0;
+                var ztNode = jsonResponse["zt"];
+
+                if (ztNode != null)
+                {
+                    if (!ztNode.AsValue().TryGetValue<int>(out status))
+                    {
+                        if (ztNode.AsValue().TryGetValue<string>(out var strVal))
+                        {
+                            _ = int.TryParse(strVal, out status);
+                        }
+                    }
+                }
+
                 var domain = jsonResponse["dom"]?.ToString();
                 var url = jsonResponse["url"]?.ToString();
 
@@ -351,7 +388,7 @@ namespace KCNLanzouDirectLink.Services
             if (jsMatch.Success)
                 return jsMatch.Groups[1].Value;
 
-            // 从ajaxm.php引用提取（至少6位数字）
+            // 从ajaxm.php引用提取，至少6位数字
             var ajaxMatch = Regex.Match(htmlContent, @"/ajaxm\.php\?file=(\d{6,})");
             if (ajaxMatch.Success)
                 return ajaxMatch.Groups[1].Value;

@@ -1,7 +1,7 @@
 ﻿using KCNLanzouDirectLink.Core;
 using KCNLanzouDirectLink.Models;
-using Newtonsoft.Json.Linq;
 using System.Diagnostics;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace KCNLanzouDirectLink.Services
@@ -49,8 +49,8 @@ namespace KCNLanzouDirectLink.Services
             var fileId = ExtractFileId(htmlContent);
 
             // POST请求获取文件信息
-            var fileInfo = await PostForFileInfoAsync(sign, password, fileId);
-            if (fileInfo == null || !fileInfo.IsSuccess)
+            var fileInfo = await PostForFileInfoAsync(url, sign, password, fileId);
+            if (fileInfo == null || fileInfo.Status != 1) // 需要 zt=1
             {
                 return (DownloadState.IntermediateUrlNotFound, null);
             }
@@ -94,7 +94,7 @@ namespace KCNLanzouDirectLink.Services
 
             try
             {
-                // 获取HTML内容（用于基本信息）
+                // 获取HTML内容，用于基本信息
                 var htmlContent = await GetPasswordPageForInfoAsync(url);
                 if (string.IsNullOrWhiteSpace(htmlContent))
                 {
@@ -114,7 +114,8 @@ namespace KCNLanzouDirectLink.Services
                 string? fileName = null;
                 if (sign != null)
                 {
-                    var encryptedInfo = await PostForFileInfoAsync(sign, password, fileId);
+                    // 传入 url
+                    var encryptedInfo = await PostForFileInfoAsync(url, sign, password, fileId);
                     fileName = encryptedInfo?.FileName;
                 }
 
@@ -185,7 +186,8 @@ namespace KCNLanzouDirectLink.Services
         }
 
         /// <summary>
-        /// 获取密码页面（用于信息提取，不处理跳转）
+        /// 获取密码页面
+        /// <para>用于信息提取，不处理跳转</para>
         /// </summary>
         private async Task<string?> GetPasswordPageForInfoAsync(string url)
         {
@@ -197,7 +199,7 @@ namespace KCNLanzouDirectLink.Services
         /// <summary>
         /// POST请求获取文件信息
         /// </summary>
-        private async Task<LanzouFileInfo?> PostForFileInfoAsync(string sign, string password, string fileId)
+        private async Task<LanzouFileInfo?> PostForFileInfoAsync(string pageUrl, string sign, string password, string fileId)
         {
             if (_domainInfo == null)
             {
@@ -209,8 +211,17 @@ namespace KCNLanzouDirectLink.Services
             Debug.WriteLine($"AJAX URL: {ajaxUrl}");
 
             var request = new HttpRequestMessage(HttpMethod.Post, ajaxUrl);
+
             SetCommonHeaders(request);
-            request.Headers.Referrer = new Uri(_domainInfo.BaseUrl);
+
+            request.Headers.Accept.Clear();
+            request.Headers.Accept.ParseAdd("application/json, text/javascript, */*");
+            request.Headers.Add("X-Requested-With", "XMLHttpRequest");
+            request.Headers.Add("Origin", _domainInfo.BaseUrl);
+            request.Headers.Referrer = new Uri(pageUrl);
+            request.Headers.Add("Sec-Fetch-Dest", "empty");
+            request.Headers.Add("Sec-Fetch-Mode", "cors");
+            request.Headers.Add("Sec-Fetch-Site", "same-origin");
 
             var postData = new Dictionary<string, string>
             {
@@ -221,65 +232,117 @@ namespace KCNLanzouDirectLink.Services
             };
             request.Content = new FormUrlEncodedContent(postData);
 
-            var content = await SendRequestWithAntiCrawlerAsync(request, postData);
-            if (content == null)
-            {
-                return null;
-            }
+            var postString = string.Join("&", postData.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+            Debug.WriteLine($"POST 数据: {postString}");
 
-            // 解析JSON响应
-            if (!content.TrimStart().StartsWith("{"))
+            var content = await SendRequestWithAntiCrawlerAsync(request, postData);
+
+            Debug.WriteLine($"服务器返回原始内容: {content}\n");
+
+            if (content == null || !content.TrimStart().StartsWith("{"))
             {
-                Debug.WriteLine("响应不是JSON格式");
+                Debug.WriteLine("响应为空或不是JSON格式");
                 return null;
             }
 
             try
             {
-                var jsonResponse = JObject.Parse(content);
+                var jsonResponse = JsonNode.Parse(content);
+                if (jsonResponse == null) return null;
+
+                int status = 0;
+                var ztNode = jsonResponse["zt"];
+                if (ztNode != null)
+                {
+                    if (!ztNode.AsValue().TryGetValue<int>(out status))
+                    {
+                        if (ztNode.AsValue().TryGetValue<string>(out var strVal))
+                            _ = int.TryParse(strVal, out status);
+                    }
+                }
+
+                var domain = jsonResponse["dom"]?.ToString();
+                var url = jsonResponse["url"]?.ToString();
+
+                var infNode = jsonResponse["inf"];
+                string? fileName = null;
+
+                if (infNode != null)
+                {
+                    fileName = infNode.ToString();
+                    if (fileName == "0") fileName = null;
+                }
 
                 var fileInfo = new LanzouFileInfo
                 {
-                    Status = jsonResponse["zt"]?.ToObject<int>() ?? 0,
-                    Domain = jsonResponse["dom"]?.ToString(),
-                    Url = jsonResponse["url"]?.ToString(),
-                    FileName = jsonResponse["inf"]?.ToString()
+                    Status = status,
+                    Domain = domain,
+                    Url = url,
+                    FileName = fileName
                 };
 
-                Debug.WriteLine($"JSON解析成功: zt={fileInfo.Status}, filename={fileInfo.FileName}");
+                Debug.WriteLine($"JSON解析成功: zt={fileInfo.Status}, filename={fileInfo.FileName ?? "null"}");
                 return fileInfo;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"JSON解析失败: {ex.Message}");
+                Debug.WriteLine($"JSON解析失败: {ex.GetType().Name} - {ex.Message}");
                 return null;
             }
         }
 
         /// <summary>
-        /// 提取sign（取第二个出现的sign）
+        /// 动态提取sign
         /// </summary>
         private string? ExtractSign(string htmlContent)
         {
             try
             {
-                var pattern = @"'sign'\s*:\s*'([^']+)'";
-                var matches = Regex.Matches(htmlContent, pattern);
+                // 定位 script 块
+                var scriptMatch = Regex.Match(htmlContent, @"<script[^>]*>([\s\S]*?downprocess[\s\S]*?)</script>", RegexOptions.IgnoreCase);
+                var jsCode = scriptMatch.Success ? scriptMatch.Groups[1].Value : htmlContent;
 
-                // 第一个通常在注释中，返回第二个（实际生效的）
-                if (matches.Count >= 2)
+                // 移除多行注释
+                jsCode = Regex.Replace(jsCode, @"/\*[\s\S]*?\*/", string.Empty);
+
+                // 移除单行注释
+                jsCode = Regex.Replace(jsCode, @"(?<!:)\/\/.*", string.Empty);
+
+                var pattern = @"(?:'|"")sign(?:'|"")\s*:\s*(?:'|"")([^'""]+)(?:'|"")";
+                var match = Regex.Match(jsCode, pattern);
+
+                if (match.Success)
                 {
-                    return matches[1].Groups[1].Value;
-                }
-                else if (matches.Count == 1)
-                {
-                    return matches[0].Groups[1].Value;
+                    var sign = match.Groups[1].Value;
+                    if (sign.Length > 20)
+                    {
+                        Debug.WriteLine($"提取到 Sign: {sign}");
+                        return sign;
+                    }
                 }
 
+                // 兜底
+                var varPattern = @"(?:'|"")sign(?:'|"")\s*:\s*([a-zA-Z0-9_]+)";
+                var varMatch = Regex.Match(jsCode, varPattern);
+                if (varMatch.Success)
+                {
+                    var varName = varMatch.Groups[1].Value;
+                    var valPattern = $@"var\s+{varName}\s*=\s*(?:'|"")([^'""]+)(?:'|"")";
+                    var valMatch = Regex.Match(jsCode, valPattern);
+                    if (valMatch.Success)
+                    {
+                        var sign = valMatch.Groups[1].Value;
+                        Debug.WriteLine($"兜底提取到 Sign: {sign} (变量名: {varName})");
+                        return sign;
+                    }
+                }
+
+                Debug.WriteLine("未提取出有效 Sign");
                 return null;
             }
-            catch
+            catch (Exception ex)
             {
+                Debug.WriteLine($"提取Sign异常: {ex.Message}");
                 return null;
             }
         }
