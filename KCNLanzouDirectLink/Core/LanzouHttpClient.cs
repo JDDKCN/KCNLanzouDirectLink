@@ -21,7 +21,7 @@ internal class LanzouHttpClient
         var handler = new HttpClientHandler
         {
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
-            UseCookies = true, 
+            UseCookies = true,
             CookieContainer = _cookieContainer
         };
 
@@ -116,7 +116,7 @@ internal class LanzouHttpClient
                 retryCount++;
                 Debug.WriteLine($"检测到垃圾广告页面，第 {retryCount} 次重试...");
 
-                await Task.Delay(800);
+                await Task.Delay(500);
 
                 var retryRequest = CloneRequest(request, postData);
                 var retryResponse = await _client.SendAsync(retryRequest);
@@ -173,7 +173,9 @@ internal class LanzouHttpClient
 
         foreach (var header in original.Headers)
         {
-            if (header.Key.Equals("Cookie", StringComparison.OrdinalIgnoreCase)) continue;
+            if (header.Key.Equals("Cookie", StringComparison.OrdinalIgnoreCase)) 
+                continue;
+
             clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
         }
 
@@ -234,7 +236,7 @@ internal class LanzouHttpClient
                             _cookieContainer.Add(new Uri($"{uri.Scheme}://{uri.Host}"), new Cookie(cookieParts[0].Trim(), cookieParts[1].Trim()));
                         }
 
-                        await Task.Delay(1500);
+                        await Task.Delay(500);
 
                         var retryRequest = new HttpRequestMessage(HttpMethod.Get, uri);
                         SetCommonHeaders(retryRequest);
@@ -261,7 +263,8 @@ internal class LanzouHttpClient
             }
 
             var location = response.Headers.Location;
-            if (location == null) return (false, null);
+            if (location == null) 
+                return (false, null);
 
             if (!location.IsAbsoluteUri)
             {

@@ -46,7 +46,7 @@ namespace KCNLanzouDirectLink.Services
                 return (DownloadState.PostsignNotFound, null);
             }
 
-            var fileId = ExtractFileId(htmlContent);
+            var fileId = ExtractAjaxPath(htmlContent);
 
             // POST请求获取文件信息
             var fileInfo = await PostForFileInfoAsync(url, sign, password, fileId);
@@ -109,7 +109,7 @@ namespace KCNLanzouDirectLink.Services
                 }
 
                 var sign = ExtractSign(passwordHtml);
-                var fileId = ExtractFileId(passwordHtml);
+                var fileId = ExtractAjaxPath(passwordHtml);
 
                 string? fileName = null;
                 if (sign != null)
@@ -199,7 +199,7 @@ namespace KCNLanzouDirectLink.Services
         /// <summary>
         /// POST请求获取文件信息
         /// </summary>
-        private async Task<LanzouFileInfo?> PostForFileInfoAsync(string pageUrl, string sign, string password, string fileId)
+        private async Task<LanzouFileInfo?> PostForFileInfoAsync(string pageUrl, string sign, string password, string ajaxPath)
         {
             if (_domainInfo == null)
             {
@@ -207,7 +207,7 @@ namespace KCNLanzouDirectLink.Services
                 return null;
             }
 
-            var ajaxUrl = LanzouDomainParser.GetAjaxUrl(_domainInfo, fileId);
+            var ajaxUrl = $"{_domainInfo.BaseUrl}/{ajaxPath}";
             Debug.WriteLine($"AJAX URL: {ajaxUrl}");
 
             var request = new HttpRequestMessage(HttpMethod.Post, ajaxUrl);
@@ -248,7 +248,8 @@ namespace KCNLanzouDirectLink.Services
             try
             {
                 var jsonResponse = JsonNode.Parse(content);
-                if (jsonResponse == null) return null;
+                if (jsonResponse == null)
+                    return null;
 
                 int status = 0;
                 var ztNode = jsonResponse["zt"];
@@ -270,7 +271,8 @@ namespace KCNLanzouDirectLink.Services
                 if (infNode != null)
                 {
                     fileName = infNode.ToString();
-                    if (fileName == "0") fileName = null;
+                    if (fileName == "0")
+                        fileName = null;
                 }
 
                 var fileInfo = new LanzouFileInfo
@@ -298,22 +300,19 @@ namespace KCNLanzouDirectLink.Services
         {
             try
             {
-                // 定位 script 块
                 var scriptMatch = Regex.Match(htmlContent, @"<script[^>]*>([\s\S]*?downprocess[\s\S]*?)</script>", RegexOptions.IgnoreCase);
                 var jsCode = scriptMatch.Success ? scriptMatch.Groups[1].Value : htmlContent;
 
-                // 移除多行注释
                 jsCode = Regex.Replace(jsCode, @"/\*[\s\S]*?\*/", string.Empty);
-
-                // 移除单行注释
                 jsCode = Regex.Replace(jsCode, @"(?<!:)\/\/.*", string.Empty);
 
                 var pattern = @"(?:'|"")sign(?:'|"")\s*:\s*(?:'|"")([^'""]+)(?:'|"")";
-                var match = Regex.Match(jsCode, pattern);
+                var matches = Regex.Matches(jsCode, pattern);
 
-                if (match.Success)
+                // 反转集合
+                foreach (Match m in matches.Cast<Match>().Reverse())
                 {
-                    var sign = match.Groups[1].Value;
+                    var sign = m.Groups[1].Value;
                     if (sign.Length > 20)
                     {
                         Debug.WriteLine($"提取到 Sign: {sign}");
@@ -348,19 +347,14 @@ namespace KCNLanzouDirectLink.Services
         }
 
         /// <summary>
-        /// 提取文件ID
+        /// 提取 Ajax 相对路径
         /// </summary>
-        private string ExtractFileId(string htmlContent)
+        private string ExtractAjaxPath(string htmlContent)
         {
             try
             {
-                var match = Regex.Match(htmlContent, @"/ajaxm\.php\?file=(\w+)");
-                if (match.Success)
-                {
-                    return match.Groups[1].Value;
-                }
-
-                return "";
+                var match = Regex.Match(htmlContent, @"/(ajax(?:m|file)\.php\?file=\w+)");
+                return match.Success ? match.Groups[1].Value : "";
             }
             catch
             {

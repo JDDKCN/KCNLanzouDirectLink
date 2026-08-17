@@ -119,21 +119,21 @@ namespace KCNLanzouDirectLink.Services
         /// </summary>
         private async Task<string?> TryProcessIframePageAsync(string mainPageContent, string mainPageUrl)
         {
-            var iframeMatch = Regex.Match(mainPageContent, @"<iframe[^>]+src=""(/fn\?[^""]+)""");
+            var iframeMatch = Regex.Match(mainPageContent, @"<iframe.*?src=""/([^""]+)""", RegexOptions.IgnoreCase);
             if (!iframeMatch.Success || _domainInfo == null)
                 return null;
 
             var iframePath = iframeMatch.Groups[1].Value;
-            var iframeUrl = $"{_domainInfo.BaseUrl}{iframePath}";
+            var iframeUrl = $"{_domainInfo.BaseUrl}/{iframePath}";
             var iframeContent = await FetchIframeContentAsync(iframeUrl, mainPageUrl);
 
             if (iframeContent == null)
                 return null;
 
-            var fileId = ExtractFileId(iframeContent);
+            var ajaxPath = ExtractAjaxPathForNormal(iframeContent);
 
-            if (IsAjaxDynamicPage(iframeContent))
-                return BuildAjaxMarker(iframeContent, fileId, iframeUrl);
+            if (iframeContent.Contains("wp_sign") && !string.IsNullOrEmpty(ajaxPath))
+                return BuildAjaxMarker(iframeContent, ajaxPath, iframeUrl);
 
             if (HasTraditionalDownloadVariables(iframeContent))
                 return iframeContent;
@@ -158,17 +158,18 @@ namespace KCNLanzouDirectLink.Services
         /// <summary>
         /// 构建AJAX标记
         /// </summary>
-        private string? BuildAjaxMarker(string iframeContent, string? fileId, string iframeUrl)
+        private string? BuildAjaxMarker(string iframeContent, string? ajaxPath, string iframeUrl)
         {
-            var signMatch = Regex.Match(iframeContent, @"var\s+wp_sign\s*=\s*['""]([^'""]+)['""]");
-            var ajaxDataMatch = Regex.Match(iframeContent, @"var\s+ajaxdata\s*=\s*['""]([^'""]+)['""]");
+            var signMatch = Regex.Match(iframeContent, @"wp_sign\s*=\s*['""]([^'""]+)['""]");
+            var ajaxDataMatch = Regex.Match(iframeContent, @"ajaxdata\s*=\s*['""]([^'""]+)['""]");
 
-            if (signMatch.Success && !string.IsNullOrEmpty(fileId))
+            if (signMatch.Success && !string.IsNullOrEmpty(ajaxPath))
             {
                 var sign = signMatch.Groups[1].Value;
                 var ajaxdata = ajaxDataMatch.Success ? ajaxDataMatch.Groups[1].Value : "rewn";
-                return $"AJAX|{sign}|{fileId}|{ajaxdata}|{iframeUrl}";
+                return $"AJAX|{sign}|{ajaxPath}|{ajaxdata}|{iframeUrl}";
             }
+
             return null;
         }
 
@@ -239,12 +240,12 @@ namespace KCNLanzouDirectLink.Services
         /// <summary>
         /// 通过AJAX获取下载URL
         /// </summary>
-        private async Task<string?> FetchAjaxDownloadUrlAsync(string sign, string fileId, string ajaxdata, string refererUrl)
+        private async Task<string?> FetchAjaxDownloadUrlAsync(string sign, string ajaxPath, string ajaxdata, string refererUrl)
         {
             if (_domainInfo == null)
                 return null;
 
-            var ajaxUrl = $"{_domainInfo.BaseUrl}/ajaxm.php?file={fileId}";
+            var ajaxUrl = $"{_domainInfo.BaseUrl}/{ajaxPath}";
             var postData = BuildAjaxPostData(sign, ajaxdata);
 
             var request = new HttpRequestMessage(HttpMethod.Post, ajaxUrl);
@@ -371,27 +372,18 @@ namespace KCNLanzouDirectLink.Services
         }
 
         /// <summary>
-        /// 检查是否是AJAX动态页面
+        /// 从主页面提取动态路径
         /// </summary>
-        private bool IsAjaxDynamicPage(string content)
+        private string? ExtractAjaxPathForNormal(string htmlContent)
         {
-            return content.Contains("$.ajax") && content.Contains("ajaxm.php");
-        }
-
-        /// <summary>
-        /// 从主页面提取文件ID
-        /// </summary>
-        private string? ExtractFileId(string htmlContent)
-        {
-            // 从JavaScript变量提取
-            var jsMatch = Regex.Match(htmlContent, @"var\s+fid\s*=\s*(\d+)");
-            if (jsMatch.Success)
-                return jsMatch.Groups[1].Value;
-
-            // 从ajaxm.php引用提取，至少6位数字
-            var ajaxMatch = Regex.Match(htmlContent, @"/ajaxm\.php\?file=(\d{6,})");
+            var ajaxMatch = Regex.Match(htmlContent, @"/(ajax(?:m|file)\.php\?file=\w+)");
             if (ajaxMatch.Success)
                 return ajaxMatch.Groups[1].Value;
+
+            // 兜底
+            var jsMatch = Regex.Match(htmlContent, @"var\s+fid\s*=\s*(\d+)");
+            if (jsMatch.Success)
+                return $"ajaxm.php?file={jsMatch.Groups[1].Value}";
 
             return null;
         }

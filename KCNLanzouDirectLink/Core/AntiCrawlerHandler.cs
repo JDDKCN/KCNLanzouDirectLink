@@ -203,7 +203,8 @@ internal class AntiCrawlerHandler
                 var content = match.Groups[1].Value;
 
                 var hexMatches = HexNumberRegex.Matches(content);
-                if (hexMatches.Count < 10) continue;
+                if (hexMatches.Count < 10)
+                    continue;
 
                 var list = new int[hexMatches.Count];
                 for (int i = 0; i < hexMatches.Count; i++)
@@ -236,7 +237,8 @@ internal class AntiCrawlerHandler
         try
         {
             var matches = GlobalStringLiteralRegex.Matches(htmlContent);
-            if (matches.Count == 0) return null;
+            if (matches.Count == 0)
+                return null;
 
             string? bestCandidate = null;
             int maxLength = 0;
@@ -248,7 +250,8 @@ internal class AntiCrawlerHandler
             {
                 var val = match.Groups[1].Value;
 
-                if (val == AliyunDict) continue;
+                if (val == AliyunDict)
+                    continue;
 
                 if (val.Length > maxLength)
                 {
@@ -257,7 +260,9 @@ internal class AntiCrawlerHandler
                 }
             }
 
-            if (bestCandidate == null) return null;
+            if (bestCandidate == null)
+                return null;
+
 
             Debug.WriteLine($"盲提取到加密Mask: {bestCandidate}");
 
@@ -350,7 +355,6 @@ internal class AntiCrawlerHandler
         {
             var outputList = new char[posList.Length];
 
-            // (O(n))实现
             for (int targetIndex = 0; targetIndex < posList.Length; targetIndex++)
             {
                 int sourceIndex = posList[targetIndex] - 1;

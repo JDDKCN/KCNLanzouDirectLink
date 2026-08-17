@@ -7,7 +7,7 @@
 
 		<!-- NuGet -->
 		<PackageId>KCNLanzouDirectLink</PackageId>
-		<Version>2.1.0</Version>
+		<Version>2.2.0</Version>
 		<Authors>剧毒的KCN(JDDKCN)</Authors>
 		<Company>KCN-Server</Company>
 		<Description>用于解析蓝奏云直链的C#原生实现类库。</Description>
@@ -29,10 +29,8 @@
 		<PackageProjectUrl>https://github.com/JDDKCN/KCNLanzouDirectLink</PackageProjectUrl>
 		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
 		<PackageReleaseNotes>更新内容：
-1. 对于阿里云盾的反爬机制,从硬编码重构为动态处理的JavaScript反爬解析器。
-2. 移除Newtonsoft.Json依赖，迁移至.NET官方的System.Text.Json。
-3. 更新到了最新的蓝奏云验证机制。
-4. 解决了一些小问题。
+1. 更新到了最新的蓝奏云验证机制。
+2. 解决了一些小问题。
 		</PackageReleaseNotes>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageIcon>favicon.png</PackageIcon>

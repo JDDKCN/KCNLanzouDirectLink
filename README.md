@@ -24,6 +24,9 @@
 
 - `.NET 6`、`.NET 7`、`.NET 8`、`.NET 9`、`.NET 10`、以及更高版本的 .NET。
 
+## 依赖
+
+- 本项目不依赖外部类库。
 
 ## 安装
 
@@ -261,7 +264,7 @@ public enum DownloadState
 
 ## Demo
 
-请前往Github存储库查看类库Demo：[https://github.com/JDDKCN/KCNLanzouDirectLink](https://github.com/JDDKCN/KCNLanzouDirectLink)
+请前往Github存储库查看类库Demo：[https://github.com/JDDKCN/KCNLanzouDirectLink.Command](https://github.com/JDDKCN/KCNLanzouDirectLink.Command)
 
 ## 许可协议
 
