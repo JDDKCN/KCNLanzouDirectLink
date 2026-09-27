@@ -35,7 +35,7 @@ namespace KCNLanzouDirectLink
             for (int i = 0; i < readyNum; i++)
             {
                 result = await _normalFileService.GetDirectLinkAsync(url);
-                if (result.state == DownloadState.Success)
+                if (result.state == DownloadState.Success || result.state == DownloadState.PostsignNotFound)
                     break;
             }
 
@@ -66,7 +66,7 @@ namespace KCNLanzouDirectLink
             for (int i = 0; i < readyNum; i++)
             {
                 result = await _encryptedFileService.GetDirectLinkAsync(url, key);
-                if (result.state == DownloadState.Success)
+                if (result.state == DownloadState.Success || result.state == DownloadState.PostsignNotFound)
                     break;
             }
 
@@ -100,7 +100,8 @@ namespace KCNLanzouDirectLink
                 }
                 else
                 {
-                    throw new ArgumentException("Unsupported URL type - 不支持的类型。该泛型仅允许实现 string 及 Tuple<string, string>。");
+                    throw new ArgumentException(
+                        "Unsupported URL type - 不支持的类型。该泛型仅允许实现 string 及 Tuple<string, string>。");
                 }
 
                 (var state, var directLink) = string.IsNullOrWhiteSpace(key)

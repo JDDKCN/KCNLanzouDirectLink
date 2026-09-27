@@ -27,6 +27,10 @@ namespace KCNLanzouDirectLink.Services
             if (htmlContent == null)
                 return (DownloadState.HtmlContentNotFound, null);
 
+            if (htmlContent.Contains("id=\"passwddiv\"", StringComparison.Ordinal) ||
+                    htmlContent.Contains("id=\"pwd\"", StringComparison.Ordinal))
+                return (DownloadState.PostsignNotFound, null);
+
             var intermediateUrl = await ExtractDownloadLinkAsync(htmlContent);
             if (intermediateUrl == null)
                 return (DownloadState.IntermediateUrlNotFound, null);
@@ -245,7 +249,11 @@ namespace KCNLanzouDirectLink.Services
             if (_domainInfo == null)
                 return null;
 
-            var ajaxUrl = $"{_domainInfo.BaseUrl}/{ajaxPath}";
+            var ajaxUrl = ajaxPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || ajaxPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                ? ajaxPath
+                : $"{_domainInfo.BaseUrl.TrimEnd('/')}/{ajaxPath.TrimStart('/')}";
+
             var postData = BuildAjaxPostData(sign, ajaxdata);
 
             var request = new HttpRequestMessage(HttpMethod.Post, ajaxUrl);
@@ -338,15 +346,29 @@ namespace KCNLanzouDirectLink.Services
         /// </summary>
         private LanzouFileInfo ParseFileInfo(string htmlContent)
         {
+            var fileName = ExtractValue(htmlContent, @"(.*?)");
+            if (string.IsNullOrEmpty(fileName))
+                fileName = ExtractValue(htmlContent, @"(.*?)");
+
+            if (string.IsNullOrEmpty(fileName))
+                fileName = ExtractValue(htmlContent, @"var\s+filename\s*=\s*'(.*?)';");
+
+            if (string.IsNullOrEmpty(fileName))
+                fileName = ExtractValue(htmlContent, @"(.*?)");
+
+            var size = ExtractValue(htmlContent, @"大小：(.*?)");
+            if (string.IsNullOrEmpty(size))
+                size = ExtractValue(htmlContent, @"文件大小：(.*?)");
+
             return new LanzouFileInfo
             {
                 Status = 1,
-                FileName = ExtractValue(htmlContent, @"<div style=""font-size: 30px;text-align: center;padding: 56px 0px 20px 0px;"">(.*?)</div>"),
-                Size = ExtractValue(htmlContent, @"<span class=""p7"">文件大小：</span>(.*?)<br>"),
-                UploadTime = ExtractValue(htmlContent, @"<span class=""p7"">上传时间：</span>(.*?)<br>"),
-                Uploader = ExtractValue(htmlContent, @"<span class=""p7"">分享用户：</span><font>(.*?)</font><br>"),
-                Platform = ExtractValue(htmlContent, @"<span class=""p7"">运行系统：</span>(.*?)<br>"),
-                Description = ExtractValue(htmlContent, @"<span class=""p7"">文件描述：</span>(.*?)<br>").Trim()
+                FileName = fileName,
+                Size = size,
+                UploadTime = ExtractValue(htmlContent, @"上传时间：(.*?)"),
+                Uploader = ExtractValue(htmlContent, @"分享用户：(.*?)"),
+                Platform = ExtractValue(htmlContent, @"运行系统：(.*?)"),
+                Description = ExtractValue(htmlContent, @"文件描述：(.*?)").Trim()
             };
         }
 
@@ -376,9 +398,13 @@ namespace KCNLanzouDirectLink.Services
         /// </summary>
         private string? ExtractAjaxPathForNormal(string htmlContent)
         {
-            var ajaxMatch = Regex.Match(htmlContent, @"/(ajax(?:m|file)\.php\?file=\w+)");
+            var ajaxMatch = Regex.Match(
+                htmlContent,
+                @"(?:https?://[^/\s""']+)?/?(ajax(?:m|file)\.php\?file=\d+)",
+                RegexOptions.IgnoreCase);
+
             if (ajaxMatch.Success)
-                return ajaxMatch.Groups[1].Value;
+                return ajaxMatch.Value;
 
             // 兜底
             var jsMatch = Regex.Match(htmlContent, @"var\s+fid\s*=\s*(\d+)");

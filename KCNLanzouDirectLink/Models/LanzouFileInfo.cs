@@ -27,6 +27,11 @@ public class LanzouFileInfo
     /// </summary>
     public bool IsSuccess => Status == 1 && !string.IsNullOrEmpty(Domain) && !string.IsNullOrEmpty(Url);
 
+    /// <summary>
+    /// 接口返回的错误信息
+    /// </summary>
+    public string? ErrorMessage { get; set; }
+
     // 文件信息
 
     /// <summary>

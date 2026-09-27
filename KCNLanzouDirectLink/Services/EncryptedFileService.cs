@@ -21,6 +21,7 @@ namespace KCNLanzouDirectLink.Services
                 return (DownloadState.UrlNotProvided, null);
             }
 
+            // 密码不能为空
             if (string.IsNullOrEmpty(password))
             {
                 return (DownloadState.PostsignNotFound, null);
@@ -50,8 +51,21 @@ namespace KCNLanzouDirectLink.Services
 
             // POST请求获取文件信息
             var fileInfo = await PostForFileInfoAsync(url, sign, password, fileId);
-            if (fileInfo == null || fileInfo.Status != 1) // 需要 zt=1
+            if (fileInfo == null)
             {
+                return (DownloadState.IntermediateUrlNotFound, null);
+            }
+
+            // 密码错误拦截
+            if (fileInfo.Status != 1)
+            {
+                Debug.WriteLine($"[POST downprocess 拒绝] zt={fileInfo.Status}, 提示: {fileInfo.ErrorMessage}");
+
+                if (IsPasswordErrorMessage(fileInfo.ErrorMessage))
+                {
+                    return (DownloadState.PostsignNotFound, null);
+                }
+
                 return (DownloadState.IntermediateUrlNotFound, null);
             }
 
@@ -207,7 +221,11 @@ namespace KCNLanzouDirectLink.Services
                 return null;
             }
 
-            var ajaxUrl = $"{_domainInfo.BaseUrl}/{ajaxPath}";
+            var ajaxUrl = ajaxPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || ajaxPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                ? ajaxPath
+                : $"{_domainInfo.BaseUrl.TrimEnd('/')}/{ajaxPath.TrimStart('/')}";
+
             Debug.WriteLine($"AJAX URL: {ajaxUrl}");
 
             var request = new HttpRequestMessage(HttpMethod.Post, ajaxUrl);
@@ -267,12 +285,20 @@ namespace KCNLanzouDirectLink.Services
 
                 var infNode = jsonResponse["inf"];
                 string? fileName = null;
+                string? errorMessage = null;
 
                 if (infNode != null)
                 {
-                    fileName = infNode.ToString();
-                    if (fileName == "0")
-                        fileName = null;
+                    var infText = infNode.ToString();
+                    if (status == 1)
+                    {
+                        if (infText != "0")
+                            fileName = infText;
+                    }
+                    else
+                    {
+                        errorMessage = infText;
+                    }
                 }
 
                 var fileInfo = new LanzouFileInfo
@@ -280,7 +306,8 @@ namespace KCNLanzouDirectLink.Services
                     Status = status,
                     Domain = domain,
                     Url = url,
-                    FileName = fileName
+                    FileName = fileName,
+                    ErrorMessage = errorMessage
                 };
 
                 Debug.WriteLine($"JSON解析成功: zt={fileInfo.Status}, filename={fileInfo.FileName ?? "null"}");
@@ -298,41 +325,62 @@ namespace KCNLanzouDirectLink.Services
         /// </summary>
         private string? ExtractSign(string htmlContent)
         {
+            if (string.IsNullOrWhiteSpace(htmlContent))
+                return null;
+
             try
             {
-                var scriptMatch = Regex.Match(htmlContent, @"<script[^>]*>([\s\S]*?downprocess[\s\S]*?)</script>", RegexOptions.IgnoreCase);
-                var jsCode = scriptMatch.Success ? scriptMatch.Groups[1].Value : htmlContent;
+                var cleanCode = Regex.Replace(htmlContent, @"/\*[\s\S]*?\*/", string.Empty);
+                cleanCode = Regex.Replace(cleanCode, @"(^|[^:])//.*$", "$1", RegexOptions.Multiline);
+                var dataSignRegex = new Regex(
+                    @"^[ \t]*data\s*:\s*\{[^\r\n]*['""]sign['""]\s*:\s*(?:(['""])(.*?)\1|([A-Za-z_\(][\w\)]*))",
+                    RegexOptions.Multiline | RegexOptions.IgnoreCase
+                );
 
-                jsCode = Regex.Replace(jsCode, @"/\*[\s\S]*?\*/", string.Empty);
-                jsCode = Regex.Replace(jsCode, @"(?<!:)\/\/.*", string.Empty);
-
-                var pattern = @"(?:'|"")sign(?:'|"")\s*:\s*(?:'|"")([^'""]+)(?:'|"")";
-                var matches = Regex.Matches(jsCode, pattern);
-
-                // 反转集合
-                foreach (Match m in matches.Cast<Match>().Reverse())
+                var match = dataSignRegex.Match(cleanCode);
+                if (match.Success)
                 {
-                    var sign = m.Groups[1].Value;
-                    if (sign.Length > 20)
+                    var literalVal = match.Groups[2].Value;
+                    if (!string.IsNullOrEmpty(literalVal))
                     {
-                        Debug.WriteLine($"提取到 Sign: {sign}");
-                        return sign;
+                        Debug.WriteLine($"提取到字面量 Sign: {literalVal}");
+                        return literalVal;
+                    }
+
+                    var varName = match.Groups[3].Value;
+                    if (!string.IsNullOrEmpty(varName))
+                    {
+                        var varRegex = new Regex(
+                            @"var\s+" + Regex.Escape(varName) + @"\s*=\s*(['""])(.*?)\1\s*;",
+                            RegexOptions.IgnoreCase
+                        );
+
+                        var varMatches = varRegex.Matches(cleanCode);
+                        if (varMatches.Count > 0)
+                        {
+                            var signVal = varMatches[varMatches.Count - 1].Groups[2].Value;
+                            Debug.WriteLine($"追查变量提取到 Sign: {signVal} (变量名: {varName})");
+                            return signVal;
+                        }
                     }
                 }
 
                 // 兜底
-                var varPattern = @"(?:'|"")sign(?:'|"")\s*:\s*([a-zA-Z0-9_]+)";
-                var varMatch = Regex.Match(jsCode, varPattern);
-                if (varMatch.Success)
+                var legacyMatches = Regex.Matches(
+                    cleanCode, 
+                    @"['""]sign['""]\s*:\s*['""]([^'""]+)['""]", 
+                    RegexOptions.IgnoreCase);
+
+                if (legacyMatches.Count > 0)
                 {
-                    var varName = varMatch.Groups[1].Value;
-                    var valPattern = $@"var\s+{varName}\s*=\s*(?:'|"")([^'""]+)(?:'|"")";
-                    var valMatch = Regex.Match(jsCode, valPattern);
-                    if (valMatch.Success)
+                    for (int i = legacyMatches.Count - 1; i >= 0; i--)
                     {
-                        var sign = valMatch.Groups[1].Value;
-                        Debug.WriteLine($"兜底提取到 Sign: {sign} (变量名: {varName})");
-                        return sign;
+                        var val = legacyMatches[i].Groups[1].Value;
+                        if (val.Length > 10)
+                        {
+                            Debug.WriteLine($"提取到旧版 Sign: {val}");
+                            return val;
+                        }
                     }
                 }
 
@@ -353,8 +401,12 @@ namespace KCNLanzouDirectLink.Services
         {
             try
             {
-                var match = Regex.Match(htmlContent, @"/(ajax(?:m|file)\.php\?file=\w+)");
-                return match.Success ? match.Groups[1].Value : "";
+                var match = Regex.Match(
+                    htmlContent,
+                    @"(?:https?://[^/\s""']+)?/?(ajax(?:m|file)\.php\?file=\d+)",
+                    RegexOptions.IgnoreCase);
+
+                return match.Success ? match.Value : "";
             }
             catch
             {
@@ -403,6 +455,14 @@ namespace KCNLanzouDirectLink.Services
             }
 
             return results;
+        }
+
+        private static bool IsPasswordErrorMessage(string? message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+                return false;
+
+            return message.Contains("密码") || message.Contains("访问") || message.Contains("错误");
         }
     }
 }

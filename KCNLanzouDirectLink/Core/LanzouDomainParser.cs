@@ -12,7 +12,7 @@ internal static class LanzouDomainParser
     /// 蓝奏云域名正则
     /// </summary>
     private static readonly Regex _domainRegex = new Regex(
-        @"https?://(?:www\.)?([^/]+\.)?lanzo[a-z]+\.com",
+        @"https?://(?:www\.)?([^/]+\.)?lanzo[a-z0-9\-]*\.[a-z]{2,}",
         RegexOptions.IgnoreCase | RegexOptions.Compiled
     );
 
@@ -83,7 +83,7 @@ internal static class LanzouDomainParser
     }
 
     /// <summary>
-    /// 获取AJAX URL（自动使用正确的域名）
+    /// 获取AJAX URL
     /// </summary>
     public static string GetAjaxUrl(LanzouDomainInfo domainInfo, string fileId)
     {

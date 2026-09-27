@@ -87,12 +87,7 @@ internal class LanzouHttpClient
                     return null;
                 }
 
-                var cookieParts = cookieStr.Split(new[] { '=' }, 2);
-                if (cookieParts.Length == 2)
-                {
-                    var uri = new Uri($"{request.RequestUri.Scheme}://{request.RequestUri.Host}");
-                    _cookieContainer.Add(uri, new Cookie(cookieParts[0].Trim(), cookieParts[1].Trim()));
-                }
+                AddWafCookie(request.RequestUri!, cookieStr);
 
                 await Task.Delay(500);
 
@@ -210,75 +205,108 @@ internal class LanzouHttpClient
     {
         try
         {
-            var uri = new Uri(url);
-            var request = new HttpRequestMessage(HttpMethod.Get, uri);
-            SetCommonHeaders(request);
-            request.Headers.Add("Sec-Fetch-Dest", "document");
-            request.Headers.Add("Sec-Fetch-Mode", "navigate");
-            request.Headers.Add("Sec-Fetch-Site", "none");
-            request.Headers.Add("Sec-Fetch-User", "?1");
-
-            var response = await _clientNoRedirect.SendAsync(request);
-
-            // 处理 200 OK 状态下的反爬虫风控
-            if (response.StatusCode == HttpStatusCode.OK)
+            for (int i = 0; i < 3; i++)
             {
-                var content = await response.Content.ReadAsStringAsync();
-                if (_antiCrawlerHandler.IsAntiCrawlerResponse(content))
+                var uri = new Uri(url);
+                using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+
+                SetCommonHeaders(request);
+                request.Headers.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8");
+                request.Headers.TryAddWithoutValidation("X-Requested-With", "mark.via");
+                request.Headers.Add("Sec-Fetch-Dest", "document");
+                request.Headers.Add("Sec-Fetch-Mode", "navigate");
+                request.Headers.Add("Sec-Fetch-Site", "none");
+                request.Headers.Add("Sec-Fetch-User", "?1");
+
+                using var response = await _clientNoRedirect.SendAsync(request);
+
+                // 301 / 302，重定向成功
+                if (response.StatusCode == HttpStatusCode.Found ||
+                    response.StatusCode == HttpStatusCode.MovedPermanently)
                 {
-                    Debug.WriteLine($"[{uri.Host}] 获取直链时触发反爬虫风控...");
-                    var cookieStr = _antiCrawlerHandler.HandleAntiCrawler(content);
-                    if (!string.IsNullOrEmpty(cookieStr))
-                    {
-                        var cookieParts = cookieStr.Split(new[] { '=' }, 2);
-                        if (cookieParts.Length == 2)
-                        {
-                            _cookieContainer.Add(new Uri($"{uri.Scheme}://{uri.Host}"), new Cookie(cookieParts[0].Trim(), cookieParts[1].Trim()));
-                        }
-
-                        await Task.Delay(500);
-
-                        var retryRequest = new HttpRequestMessage(HttpMethod.Get, uri);
-                        SetCommonHeaders(retryRequest);
-                        retryRequest.Headers.Add("Sec-Fetch-Dest", "document");
-                        retryRequest.Headers.Add("Sec-Fetch-Mode", "navigate");
-                        retryRequest.Headers.Add("Sec-Fetch-Site", "none");
-                        retryRequest.Headers.Add("Sec-Fetch-User", "?1");
-
-                        response = await _clientNoRedirect.SendAsync(retryRequest);
-                    }
-                    else
-                    {
-                        Debug.WriteLine($"[{uri.Host}] 直链反爬虫处理失败");
+                    var location = response.Headers.Location;
+                    if (location == null)
                         return (false, null);
+
+                    var finalUrl = location.IsAbsoluteUri
+                        ? location.ToString()
+                        : new Uri(new Uri(url), location).ToString();
+
+                    return (true, finalUrl);
+                }
+
+                // 200，被拦截
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    if (_antiCrawlerHandler.IsAntiCrawlerResponse(content))
+                    {
+                        Debug.WriteLine(
+                            $"[{uri.Host}] 获取直链时触发 ESA，计算 acw_sc__v2 (第 {i + 1} 次)...");
+
+                        var cookieStr = _antiCrawlerHandler.HandleAntiCrawler(content);
+                        if (!string.IsNullOrEmpty(cookieStr))
+                        {
+                            AddWafCookie(uri, cookieStr);
+                            await Task.Delay(500);
+                            continue;
+                        }
                     }
                 }
-            }
 
-            if (response.StatusCode != HttpStatusCode.Found &&
-                response.StatusCode != HttpStatusCode.MovedPermanently)
-            {
                 Debug.WriteLine($"重定向失败，最终状态码: {response.StatusCode}");
-                return (false, null);
+                break;
             }
 
-            var location = response.Headers.Location;
-            if (location == null) 
-                return (false, null);
-
-            if (!location.IsAbsoluteUri)
-            {
-                var baseUri = new Uri(url);
-                var newUri = new Uri(baseUri, location);
-                return (true, newUri.ToString());
-            }
-
-            return (true, location.ToString());
+            return (false, null);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"获取重定向URL异常: {ex.Message}");
             return (false, null);
+        }
+    }
+
+    /// <summary>
+    /// 将 WAF 验证 Cookie 绑定到当前 Host 以及根域名
+    /// </summary>
+    /// <param name="uri"></param>
+    /// <param name="cookieStr"></param>
+    protected void AddWafCookie(Uri uri, string cookieStr)
+    {
+        var cookieParts = cookieStr.Split(new[] { '=' }, 2);
+        if (cookieParts.Length != 2) 
+            return;
+
+        var name = cookieParts[0].Trim();
+        var val = cookieParts[1].Trim();
+
+        try
+        {
+            _cookieContainer.Add(new Uri($"{uri.Scheme}://{uri.Host}"), new Cookie(name, val));
+        }
+        catch { }
+
+        var baseDomain = _domainInfo?.BaseDomain;
+        if (string.IsNullOrEmpty(baseDomain))
+        {
+            var hostParts = uri.Host.Split('.');
+            baseDomain = hostParts.Length >= 2
+                ? string.Join(".", hostParts.Skip(hostParts.Length - 2))
+                : uri.Host;
+        }
+
+        try
+        {
+            _cookieContainer.Add(new Cookie(name, val, "/", "." + baseDomain));
+        }
+        catch
+        {
+            try
+            {
+                _cookieContainer.Add(new Uri($"{uri.Scheme}://{baseDomain}"), new Cookie(name, val));
+            }
+            catch { }
         }
     }
 }

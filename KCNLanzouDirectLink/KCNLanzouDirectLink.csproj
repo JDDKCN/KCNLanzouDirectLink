@@ -7,7 +7,7 @@
 
 		<!-- NuGet -->
 		<PackageId>KCNLanzouDirectLink</PackageId>
-		<Version>2.2.0</Version>
+		<Version>2.3.0</Version>
 		<Authors>剧毒的KCN(JDDKCN)</Authors>
 		<Company>KCN-Server</Company>
 		<Description>用于解析蓝奏云直链的C#原生实现类库。</Description>
